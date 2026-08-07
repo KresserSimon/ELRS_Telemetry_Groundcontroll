@@ -10,7 +10,8 @@ from typing import Optional
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF
-from PyQt6.QtWidgets import QWidget
+
+from ui.draggable_overlay import DraggableOverlay
 
 BASE_PANEL_SIZE = 130
 MIN_SCALE = 0.5
@@ -28,15 +29,13 @@ BEZEL_COLOR = QColor("#0d1117")
 PANEL_BG = QColor(18, 22, 28, 235)
 
 
-class HorizonWidget(QWidget):
+class HorizonWidget(DraggableOverlay):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._scale = 1.0
         self.setFixedSize(BASE_PANEL_SIZE, BASE_PANEL_SIZE)
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
         self._roll: Optional[float] = None
         self._pitch: Optional[float] = None
-        self._drag_start = None
 
     def set_scale(self, scale: float) -> None:
         self._scale = max(MIN_SCALE, min(MAX_SCALE, scale))
@@ -46,35 +45,6 @@ class HorizonWidget(QWidget):
 
     def scale(self) -> float:
         return self._scale
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start = event.position().toPoint()
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            parent = self.parentWidget()
-            if parent is not None and hasattr(parent, "set_overlay_free"):
-                parent.set_overlay_free(self)
-            event.accept()
-
-    def mouseMoveEvent(self, event) -> None:
-        if self._drag_start is None or not (event.buttons() & Qt.MouseButton.LeftButton):
-            return
-        delta = event.position().toPoint() - self._drag_start
-        new_pos = self.pos() + delta
-        parent = self.parentWidget()
-        if parent is not None:
-            max_x = max(0, parent.width() - self.width())
-            max_y = max(0, parent.height() - self.height())
-            new_pos.setX(min(max(new_pos.x(), 0), max_x))
-            new_pos.setY(min(max(new_pos.y(), 0), max_y))
-        self.move(new_pos)
-        event.accept()
-
-    def mouseReleaseEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start = None
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
-            event.accept()
 
     def update_attitude(self, roll: Optional[float], pitch: Optional[float]) -> None:
         self._roll = roll

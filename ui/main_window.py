@@ -22,6 +22,7 @@ from core.dashboard_config import save_visible_fields
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
 from export.flight_logger import ALL_FIELDS, FlightLogger
+from export.route_export import export_route_csv, export_route_gpx
 from export.route_import import import_route_file
 from export.track_export import TrackRecorder
 from telemetry.crsf_serial_worker import CRSFSerialWorker
@@ -35,6 +36,7 @@ from ui.dashboard_settings_dialog import DashboardSettingsDialog
 from ui.flight_log_dialog import FlightLogSettingsDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_widget import MapWidget
+from ui.route_info_widget import RouteInfoWidget
 
 HEARTBEAT_TIMEOUT_S = 3.0
 
@@ -89,6 +91,10 @@ class MainWindow(QMainWindow):
         self._map.route_bridge.waypoint_added.connect(self._route_manager.add)
         self._map.route_bridge.waypoint_removed.connect(self._route_manager.remove_at)
 
+        self._route_info = RouteInfoWidget()
+        self._route_info.setVisible(False)
+        self._map.add_overlay(self._route_info, "bottom-left")
+
         self._last_telemetry_state = None
         self._flight_logger = FlightLogger(lambda: self._last_telemetry_state)
         self._log_fields = list(ALL_FIELDS)
@@ -111,6 +117,7 @@ class MainWindow(QMainWindow):
 
         self._worker = None
         self._demo_mode = bool(args.demo)
+        self._plan_mode = False
 
         self._i18n_menus: list[tuple] = []
         self._i18n_actions: list[tuple] = []
@@ -168,6 +175,10 @@ class MainWindow(QMainWindow):
         import_route_action = route_menu.addAction("")
         self._i18n_actions.append((import_route_action, "menu_route_import"))
         import_route_action.triggered.connect(self._import_route)
+
+        export_route_action = route_menu.addAction("")
+        self._i18n_actions.append((export_route_action, "menu_route_export"))
+        export_route_action.triggered.connect(self._export_route)
 
         flightlog_menu = menu.addMenu("")
         self._i18n_menus.append((flightlog_menu, "menu_flightlog"))
@@ -279,6 +290,12 @@ class MainWindow(QMainWindow):
         self._demo_action.setChecked(self._demo_mode)
         self._demo_action.toggled.connect(self._toggle_demo_mode)
 
+        self._plan_action = sim_menu.addAction("")
+        self._i18n_actions.append((self._plan_action, "menu_simulation_plan"))
+        self._plan_action.setCheckable(True)
+        self._plan_action.setChecked(self._plan_mode)
+        self._plan_action.toggled.connect(self._toggle_plan_mode)
+
         self._retranslate_menu()
 
     def _retranslate_menu(self) -> None:
@@ -289,13 +306,17 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- worker
 
-    def _start_worker(self, demo: bool) -> None:
+    def _stop_worker(self) -> None:
         if self._worker is not None:
             self._worker.telemetry_received.disconnect(self._on_telemetry)
             self._worker.connection_changed.disconnect(self._on_connection_changed)
             self._worker.error_occurred.disconnect(self._on_error)
             self._worker.stop()
             self._worker = None
+
+    def _start_worker(self, demo: bool) -> None:
+        self._stop_worker()
+        self._set_plan_mode_checked_silently(False)
 
         if demo:
             lat, lon = self._args.demo_center
@@ -333,6 +354,23 @@ class MainWindow(QMainWindow):
     def _toggle_demo_mode(self, enabled: bool) -> None:
         self._demo_mode = enabled
         self._start_worker(demo=enabled)
+
+    def _set_plan_mode_checked_silently(self, checked: bool) -> None:
+        self._plan_mode = checked
+        self._plan_action.blockSignals(True)
+        self._plan_action.setChecked(checked)
+        self._plan_action.blockSignals(False)
+
+    def _toggle_plan_mode(self, enabled: bool) -> None:
+        self._plan_mode = enabled
+        if enabled:
+            self._set_demo_checked_silently(False)
+            self._stop_worker()
+            self._dashboard.reset_session()
+            self._map.clear_path()
+            self.statusBar().showMessage(i18n.tr("status_plan_mode_active"))
+        else:
+            self._start_worker(demo=self._demo_mode)
 
     def _apply_connection_values(self, values: dict) -> None:
         self._args.protocol = values["protocol"]
@@ -462,7 +500,11 @@ class MainWindow(QMainWindow):
     # --------------------------------------------------------------- route
 
     def _on_route_changed(self) -> None:
-        self._map.render_route(self._route_manager.waypoints())
+        waypoints = self._route_manager.waypoints()
+        segments = self._route_manager.segment_distances()
+        self._map.render_route(waypoints, segments)
+        self._route_info.update_info(len(waypoints), sum(segments))
+        self._route_info.setVisible(len(waypoints) >= 2)
 
     def _import_route(self) -> None:
         filter_str = (
@@ -484,6 +526,31 @@ class MainWindow(QMainWindow):
 
         self._route_manager.set_all(waypoints)
         self.statusBar().showMessage(i18n.tr("status_route_imported", count=len(waypoints)), 5000)
+
+    def _export_route(self) -> None:
+        waypoints = self._route_manager.waypoints()
+        if not waypoints:
+            QMessageBox.warning(self, i18n.tr("msgbox_no_route_title"), i18n.tr("msgbox_no_route_body"))
+            return
+
+        filter_str = f"{i18n.tr('export_gpx_filter')};;{i18n.tr('route_csv_filter')}"
+        default_name = f"route_{time.strftime('%Y%m%d_%H%M%S')}.gpx"
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self, i18n.tr("menu_route_export"), default_name, filter_str
+        )
+        if not path:
+            return
+
+        try:
+            if path.lower().endswith(".csv") or selected_filter == i18n.tr("route_csv_filter"):
+                export_route_csv(waypoints, path)
+            else:
+                export_route_gpx(waypoints, path)
+        except OSError as exc:
+            QMessageBox.critical(self, i18n.tr("msgbox_export_failed_title"), str(exc))
+            return
+
+        self.statusBar().showMessage(i18n.tr("status_route_exported", path=path), 5000)
 
     # ------------------------------------------------------------- export
 

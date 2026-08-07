@@ -31,6 +31,11 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     border: 1.5px solid #ffffff; box-shadow: 0 0 2px rgba(0,0,0,0.6);
     cursor: pointer;
   }
+  .route-seg-label {
+    background: rgba(20,24,30,0.85); color: #ffffff; font-size: 10px; font-weight: 600;
+    padding: 1px 5px; border-radius: 6px; white-space: nowrap; text-align: center;
+    border: 1px solid #2ecc71;
+  }
 </style>
 </head>
 <body>
@@ -142,6 +147,15 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
+  // Keep the drone glued to the viewport centre even right after a manual
+  // zoom (zooming otherwise re-centres on the zoom focus point, not the
+  // drone, until the next telemetry tick nudges it back).
+  map.on('zoomend', function () {
+    if (autoCenter && droneMarker) {
+      map.panTo(droneMarker.getLatLng(), { animate: false });
+    }
+  });
+
   function jumpToDrone() {
     if (droneMarker) {
       map.panTo(droneMarker.getLatLng(), { animate: true });
@@ -161,13 +175,20 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   // ---------------------------------------------------------- planned route
 
   var routeMarkers = [];
+  var routeSegLabels = [];
   var routeLine = L.polyline([], { color: '#2ecc71', weight: 3, dashArray: '6,6' }).addTo(map);
   var routeMode = false;
   var routeBridge = null;
 
+  function formatDistance(m) {
+    return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
+  }
+
   function setRoute(wps) {
     routeMarkers.forEach(function (m) { map.removeLayer(m); });
     routeMarkers = [];
+    routeSegLabels.forEach(function (m) { map.removeLayer(m); });
+    routeSegLabels = [];
 
     var latlngs = [];
     wps.forEach(function (wp, idx) {
@@ -185,6 +206,20 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
         if (routeBridge) { routeBridge.waypoint_marker_clicked(idx); }
       });
       routeMarkers.push(marker);
+
+      if (idx > 0 && wp.seg !== null && wp.seg !== undefined) {
+        var prev = wps[idx - 1];
+        var midLat = (prev.lat + wp.lat) / 2;
+        var midLon = (prev.lon + wp.lon) / 2;
+        var segIcon = L.divIcon({
+          className: '',
+          html: '<div class="route-seg-label">' + formatDistance(wp.seg) + '</div>',
+          iconSize: [70, 16],
+          iconAnchor: [35, 8]
+        });
+        var segLabel = L.marker([midLat, midLon], { icon: segIcon, interactive: false, zIndexOffset: 400 }).addTo(map);
+        routeSegLabels.push(segLabel);
+      }
     });
     routeLine.setLatLngs(latlngs);
   }

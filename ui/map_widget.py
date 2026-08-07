@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -94,8 +94,13 @@ class MapWidget(QWebEngineView):
     def center_on_current(self) -> None:
         self.page().runJavaScript("jumpToDrone();")
 
-    def render_route(self, waypoints: Iterable[Waypoint]) -> None:
-        payload = [{"lat": wp.lat, "lon": wp.lon} for wp in waypoints]
+    def render_route(self, waypoints: Iterable[Waypoint], segment_distances: Optional[List[float]] = None) -> None:
+        waypoints = list(waypoints)
+        segment_distances = segment_distances or []
+        payload = [
+            {"lat": wp.lat, "lon": wp.lon, "seg": segment_distances[i - 1] if i > 0 and i - 1 < len(segment_distances) else None}
+            for i, wp in enumerate(waypoints)
+        ]
         self.page().runJavaScript(f"setRoute({json.dumps(payload)});")
 
     def set_route_mode(self, enabled: bool) -> None:

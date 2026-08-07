@@ -8,6 +8,8 @@ from typing import List, Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from core.geo import haversine_distance_m
+
 
 @dataclass
 class Waypoint:
@@ -52,3 +54,13 @@ class RouteManager(QObject):
     def set_all(self, waypoints: List[Waypoint]) -> None:
         self._waypoints = list(waypoints)
         self.changed.emit()
+
+    def segment_distances(self) -> List[float]:
+        """Great-circle distance (metres) between each consecutive waypoint pair."""
+        return [
+            haversine_distance_m(a.lat, a.lon, b.lat, b.lon)
+            for a, b in zip(self._waypoints, self._waypoints[1:])
+        ]
+
+    def total_distance(self) -> float:
+        return sum(self.segment_distances())
