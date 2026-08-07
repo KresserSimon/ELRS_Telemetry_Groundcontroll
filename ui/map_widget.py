@@ -7,6 +7,7 @@ from typing import Iterable, List, Optional
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
+from core import i18n
 from core.nfz import NoFlyZone
 from core.route import Waypoint
 from ui.map_template import get_map_html
@@ -27,7 +28,11 @@ class MapWidget(QWebEngineView):
         self._channel.registerObject("routeBridge", self.route_bridge)
         self.page().setWebChannel(self._channel)
 
-        self.setHtml(get_map_html())
+        self.setHtml(get_map_html(
+            label_waypoint=i18n.tr("mapctx_waypoint"),
+            label_start=i18n.tr("mapctx_start"),
+            label_end=i18n.tr("mapctx_end"),
+        ))
 
     def add_overlay(self, widget, corner: str = "top-right") -> None:
         widget.setParent(self)

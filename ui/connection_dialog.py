@@ -26,10 +26,11 @@ DEFAULT_BAUD = {"mavlink": 57600, "crsf": 420000}
 
 
 class ConnectionSettingsDialog(QDialog):
-    def __init__(self, args, parent=None, show_demo_button: bool = False) -> None:
+    def __init__(self, args, parent=None, show_demo_button: bool = False, show_plan_button: bool = False) -> None:
         super().__init__(parent)
         self.setWindowTitle(i18n.tr("conn_dialog_title"))
         self.demo_requested = False
+        self.plan_requested = False
 
         self._protocol_group = QButtonGroup(self)
         self._mavlink_radio = QRadioButton(i18n.tr("conn_mavlink"))
@@ -88,6 +89,9 @@ class ConnectionSettingsDialog(QDialog):
         if show_demo_button:
             demo_btn = button_box.addButton(i18n.tr("conn_demo_btn"), QDialogButtonBox.ButtonRole.ActionRole)
             demo_btn.clicked.connect(self._start_demo)
+        if show_plan_button:
+            plan_btn = button_box.addButton(i18n.tr("conn_plan_btn"), QDialogButtonBox.ButtonRole.ActionRole)
+            plan_btn.clicked.connect(self._start_plan)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
 
@@ -118,6 +122,10 @@ class ConnectionSettingsDialog(QDialog):
 
     def _start_demo(self) -> None:
         self.demo_requested = True
+        self.accept()
+
+    def _start_plan(self) -> None:
+        self.plan_requested = True
         self.accept()
 
     def _update_transport_visibility(self) -> None:

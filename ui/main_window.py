@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
         self._route_manager.changed.connect(self._on_route_changed)
         self._map.route_bridge.waypoint_added.connect(self._route_manager.add)
         self._map.route_bridge.waypoint_removed.connect(self._route_manager.remove_at)
+        self._map.route_bridge.waypoint_added_typed.connect(self._route_manager.add_typed)
 
         self._route_info = RouteInfoWidget()
         self._route_info.setVisible(False)
@@ -142,7 +143,8 @@ class MainWindow(QMainWindow):
         if not self._demo_mode:
             self._show_startup_connection_dialog()
 
-        self._start_worker(demo=self._demo_mode)
+        if not self._plan_mode:
+            self._start_worker(demo=self._demo_mode)
 
     # ---------------------------------------------------------------- menu
 
@@ -406,9 +408,19 @@ class MainWindow(QMainWindow):
             self._stop_worker()
             self._dashboard.reset_session()
             self._map.clear_path()
+            # Nothing is flying, and the whole point of Plan Mode is to pan
+            # freely while placing waypoints - so release the follow-the-drone
+            # lock rather than leaving it fighting the user's own panning.
+            self._set_auto_center_checked_silently(False)
             self.statusBar().showMessage(i18n.tr("status_plan_mode_active"))
         else:
             self._start_worker(demo=self._demo_mode)
+
+    def _set_auto_center_checked_silently(self, checked: bool) -> None:
+        self._map.set_auto_center(checked)
+        self._auto_center_action.blockSignals(True)
+        self._auto_center_action.setChecked(checked)
+        self._auto_center_action.blockSignals(False)
 
     def _apply_connection_values(self, values: dict) -> None:
         self._args.protocol = values["protocol"]
@@ -426,13 +438,17 @@ class MainWindow(QMainWindow):
         self._demo_action.blockSignals(False)
 
     def _show_startup_connection_dialog(self) -> None:
-        dialog = ConnectionSettingsDialog(self._args, self, show_demo_button=True)
+        dialog = ConnectionSettingsDialog(self._args, self, show_demo_button=True, show_plan_button=True)
         dialog.setWindowTitle(i18n.tr("conn_startup_title"))
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return  # keep whatever was configured via CLI defaults
 
         if dialog.demo_requested:
             self._set_demo_checked_silently(True)
+            return
+
+        if dialog.plan_requested:
+            self._plan_action.setChecked(True)
             return
 
         values = dialog.result_values()

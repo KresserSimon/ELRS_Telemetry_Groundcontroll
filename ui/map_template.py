@@ -36,10 +36,25 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     padding: 1px 5px; border-radius: 6px; white-space: nowrap; text-align: center;
     border: 1px solid #2ecc71;
   }
+  .route-context-menu {
+    position: absolute; display: none; z-index: 1000;
+    background: #20242b; border: 1px solid #3a4048; border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5); overflow: hidden; min-width: 150px;
+  }
+  .route-context-menu button {
+    display: block; width: 100%; padding: 7px 14px; border: none; background: none;
+    color: #e8e8e8; text-align: left; font-size: 12px; cursor: pointer;
+  }
+  .route-context-menu button:hover { background: #2ecc71; color: #10151a; }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="route-context-menu" class="route-context-menu">
+  <button onclick="contextMenuPick('waypoint')">__LABEL_WAYPOINT__</button>
+  <button onclick="contextMenuPick('start')">__LABEL_START__</button>
+  <button onclick="contextMenuPick('end')">__LABEL_END__</button>
+</div>
 <script>
   var map = L.map('map', { zoomControl: true }).setView([__CENTER_LAT__, __CENTER_LON__], __ZOOM__);
 
@@ -251,6 +266,39 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     }
   });
 
+  // -------------------------------------------------- right-click point menu
+  //
+  // Independent of routeMode/Wegpunkt-Modus above (right-click never
+  // conflicts with panning), so a waypoint/start/end point can always be
+  // dropped without first switching modes. Feeds into the same RouteManager
+  // list as every other waypoint source, via routeBridge.waypoint_clicked_typed.
+
+  var contextMenuEl = document.getElementById('route-context-menu');
+  var contextMenuLatLng = null;
+
+  function hideContextMenu() {
+    contextMenuEl.style.display = 'none';
+    contextMenuLatLng = null;
+  }
+
+  map.on('contextmenu', function (e) {
+    L.DomEvent.preventDefault(e);
+    contextMenuLatLng = e.latlng;
+    var point = map.latLngToContainerPoint(e.latlng);
+    contextMenuEl.style.left = point.x + 'px';
+    contextMenuEl.style.top = point.y + 'px';
+    contextMenuEl.style.display = 'block';
+  });
+
+  map.on('click movestart zoomstart', hideContextMenu);
+
+  function contextMenuPick(kind) {
+    if (contextMenuLatLng && routeBridge) {
+      routeBridge.waypoint_clicked_typed(contextMenuLatLng.lat, contextMenuLatLng.lng, kind);
+    }
+    hideContextMenu();
+  }
+
   // -------------------------------------------------------------- no-fly zones
 
   var nfzLayers = [];
@@ -296,10 +344,20 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 
-def get_map_html(center_lat: float = 48.1372, center_lon: float = 11.5756, zoom: int = 16) -> str:
+def get_map_html(
+    center_lat: float = 48.1372,
+    center_lon: float = 11.5756,
+    zoom: int = 16,
+    label_waypoint: str = "Wegpunkt",
+    label_start: str = "Startpunkt",
+    label_end: str = "Endpunkt",
+) -> str:
     return (
         MAP_HTML_TEMPLATE
         .replace("__CENTER_LAT__", str(center_lat))
         .replace("__CENTER_LON__", str(center_lon))
         .replace("__ZOOM__", str(zoom))
+        .replace("__LABEL_WAYPOINT__", label_waypoint)
+        .replace("__LABEL_START__", label_start)
+        .replace("__LABEL_END__", label_end)
     )

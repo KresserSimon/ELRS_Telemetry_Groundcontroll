@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from core import i18n
 from core.geo import haversine_distance_m
 
 
@@ -43,6 +44,24 @@ class RouteManager(QObject):
 
     def add(self, lat: float, lon: float, alt: Optional[float] = None, name: str = "") -> None:
         self._waypoints.append(Waypoint(lat, lon, alt, name))
+        self.changed.emit()
+
+    def add_typed(self, lat: float, lon: float, kind: str) -> None:
+        """Add a point picked from the map's right-click "Wegpunkt / Startpunkt
+        / Endpunkt" menu, feeding straight into this same list - the point
+        shows up as just another editable row in RouteEditorDialog.
+
+        'start' inserts at the front of the list (defines where the route
+        begins); 'end' appends with an RTH action so a route planned this way
+        already satisfies validate_mission()'s "must end in RTH/HOLD/LAND"
+        check without extra manual editing.
+        """
+        if kind == "start":
+            self._waypoints.insert(0, Waypoint(lat, lon, name=i18n.tr("mapctx_start")))
+        elif kind == "end":
+            self._waypoints.append(Waypoint(lat, lon, name=i18n.tr("mapctx_end"), action="RTH"))
+        else:
+            self._waypoints.append(Waypoint(lat, lon))
         self.changed.emit()
 
     def remove_at(self, index: int) -> None:
