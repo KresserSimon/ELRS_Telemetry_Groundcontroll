@@ -1,10 +1,11 @@
-"""MAVLink-over-UDP telemetry backend.
+"""MAVLink telemetry backend, over UDP or a direct USB/serial connection.
 
-This is the recommended path for ArduPilot / Betaflight flight controllers
+UDP is the recommended path for ArduPilot / Betaflight flight controllers
 paired with an ELRS receiver: the FC (or an ESP32/ESP8266 WiFi bridge sitting
 between the FC and the ELRS RX) streams MAVLink on the standard GCS UDP port
 (14550) and this worker just listens for it, exactly like QGroundControl or
-Mission Planner would.
+Mission Planner would. Serial mode is for a FC or ELRS TX module plugged
+directly into the PC via USB, outputting MAVLink on its USB-serial port.
 """
 from __future__ import annotations
 
@@ -16,24 +17,41 @@ from core.telemetry_state import TelemetryState
 from telemetry.base_worker import TelemetryWorker
 
 CONNECTION_TIMEOUT_S = 3.0
+MAVLINK_SERIAL_DEFAULT_BAUD = 57600
 
 
 class MAVLinkWorker(TelemetryWorker):
-    def __init__(self, host: str = "0.0.0.0", port: int = 14550, udp_mode: str = "listen") -> None:
+    def __init__(
+        self,
+        connection_type: str = "udp",
+        host: str = "0.0.0.0",
+        port: int = 14550,
+        udp_mode: str = "listen",
+        serial_port: str = "",
+        baud: int = MAVLINK_SERIAL_DEFAULT_BAUD,
+    ) -> None:
         super().__init__()
+        self._connection_type = connection_type
         self._host = host
         self._port = port
         self._udp_mode = udp_mode
+        self._serial_port = serial_port
+        self._baud = baud
         self._state = TelemetryState(source="mavlink")
 
     def _connection_string(self) -> str:
+        if self._connection_type == "serial":
+            return self._serial_port
         if self._udp_mode == "connect":
             return f"udpout:{self._host}:{self._port}"
         return f"udpin:{self._host}:{self._port}"
 
     def run(self) -> None:
         try:
-            conn = mavutil.mavlink_connection(self._connection_string())
+            if self._connection_type == "serial":
+                conn = mavutil.mavlink_connection(self._connection_string(), baud=self._baud)
+            else:
+                conn = mavutil.mavlink_connection(self._connection_string())
         except Exception as exc:
             self.error_occurred.emit(f"MAVLink-Verbindung fehlgeschlagen: {exc}")
             return

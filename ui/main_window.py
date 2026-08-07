@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 from alerts.tts_alert import BatteryAlertMonitor, TTSWorker
 from core.telemetry_state import TelemetryState
 from export.track_export import TrackRecorder
+from telemetry.crsf_serial_worker import CRSFSerialWorker
 from telemetry.crsf_worker import CRSFWorker
 from telemetry.demo_worker import DemoWorker
 from telemetry.mavlink_worker import MAVLinkWorker
@@ -114,6 +115,13 @@ class MainWindow(QMainWindow):
         if demo:
             lat, lon = self._args.demo_center
             self._worker = DemoWorker(center_lat=lat, center_lon=lon, cells=self._args.cells)
+        elif self._args.connection == "usb":
+            if self._args.protocol == "mavlink":
+                self._worker = MAVLinkWorker(
+                    connection_type="serial", serial_port=self._args.serial_port, baud=self._args.baud
+                )
+            else:
+                self._worker = CRSFSerialWorker(serial_port=self._args.serial_port, baud=self._args.baud)
         elif self._args.protocol == "mavlink":
             self._worker = MAVLinkWorker(host=self._args.host, port=self._args.port, udp_mode=self._args.udp_mode)
         else:
@@ -127,9 +135,14 @@ class MainWindow(QMainWindow):
         self._has_fix = False
         self._map.clear_path()
         self._track_recorder.clear()
-        self.statusBar().showMessage(
-            "Demo-Modus gestartet" if demo else f"Warte auf Telemetrie ({self._args.protocol}, Port {self._args.port})..."
-        )
+
+        if demo:
+            status = "Demo-Modus gestartet"
+        elif self._args.connection == "usb":
+            status = f"Warte auf Telemetrie ({self._args.protocol} ueber USB, {self._args.serial_port})..."
+        else:
+            status = f"Warte auf Telemetrie ({self._args.protocol} ueber UDP, Port {self._args.port})..."
+        self.statusBar().showMessage(status)
 
     def _toggle_demo_mode(self, enabled: bool) -> None:
         self._demo_mode = enabled

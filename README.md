@@ -37,6 +37,15 @@ Mit rohem CRSF-Telemetriestrom über UDP:
 python main.py --protocol crsf --host 0.0.0.0 --port 14551
 ```
 
+Mit direkter USB/seriell-Verbindung (FC oder ELRS TX-Modul per USB-Kabel
+angeschlossen) statt WiFi/UDP – verfügbare Ports zuerst auflisten:
+
+```bash
+python main.py --list-ports
+python main.py --connection usb --protocol mavlink --serial-port COM5
+python main.py --connection usb --protocol crsf --serial-port COM5 --baud 420000
+```
+
 Weitere Optionen: `python main.py --help` (u. a. `--cells`,
 `--low-cell-voltage`, `--critical-cell-voltage` für die Akkuwarnung und
 `--demo-center lat,lon` für den Startpunkt der Simulation).
@@ -84,6 +93,24 @@ In beiden Fällen müssen PC (auf dem diese App läuft) und die Bridge/das
 ELRS-Modul im selben Netzwerk sein – entweder beide im selben Heim-WLAN,
 oder der PC verbindet sich direkt mit dem Access Point des Moduls.
 
+### Weg 3: USB/seriell (`--connection usb`)
+
+Alternative ohne WLAN: Flugsteuerung oder ELRS TX-Modul per USB-Kabel direkt
+an den PC anschließen. Windows legt dafür einen COM-Port an (z. B. `COM5`);
+mit `python main.py --list-ports` lassen sich alle erkannten Ports samt
+Beschreibung auflisten. Danach:
+
+- `--connection usb --protocol mavlink --serial-port COM5` – Standard-Baudrate
+  57600 (per `--baud` überschreibbar), passend zum MAVLink-Telemetrieausgang
+  der Flugsteuerung.
+- `--connection usb --protocol crsf --serial-port COM5` – Standard-Baudrate
+  420000 (Standard-Baudrate von CRSF-UARTs), für ein direkt angeschlossenes
+  ELRS-Modul oder eine Empfänger-UART, die per USB-Seriell-Adapter am PC
+  hängt.
+
+Diese Verbindungsart ist ein Ersatz für Weg 1/2, kein Zusatz – `--connection`
+wählt UDP (Standard) oder USB, unabhängig vom gewählten `--protocol`.
+
 ## Architektur
 
 ```
@@ -91,11 +118,14 @@ elrs_ground_station/
   main.py                  CLI-Einstieg
   core/telemetry_state.py  gemeinsames Datenmodell
   telemetry/
-    base_worker.py         gemeinsames QThread-Interface
-    mavlink_worker.py       MAVLink-UDP-Empfänger (pymavlink)
-    crsf_parser.py          CRSF-Frame-Parser (GPS/Battery/LinkStats/FlightMode)
-    crsf_worker.py           CRSF-UDP-Empfänger
-    demo_worker.py           Simulierte Telemetrie
+    base_worker.py             gemeinsames QThread-Interface
+    mavlink_worker.py          MAVLink-Empfänger (pymavlink), UDP oder USB/seriell
+    crsf_parser.py             CRSF-Frame-Parser (GPS/Battery/LinkStats/FlightMode)
+    crsf_transport_worker.py   gemeinsame Empfangsschleife fuer CRSF (UDP + USB)
+    crsf_worker.py             CRSF-UDP-Empfänger
+    crsf_serial_worker.py      CRSF-USB/seriell-Empfänger (pyserial)
+    serial_ports.py            Hilfsfunktion fuer --list-ports
+    demo_worker.py              Simulierte Telemetrie
   ui/
     main_window.py          Hauptfenster, verbindet Worker <-> UI
     map_widget.py            QWebEngineView-Wrapper um die Leaflet-Karte
@@ -106,7 +136,7 @@ elrs_ground_station/
 ```
 
 Die komplette Netzwerk-/Parsing-Arbeit läuft in eigenen `QThread`s
-(`MAVLinkWorker`, `CRSFWorker`, `DemoWorker`), die alle dasselbe
+(`MAVLinkWorker`, `CRSFWorker`, `CRSFSerialWorker`, `DemoWorker`), die alle dasselbe
 Signal-Interface (`telemetry_received`, `connection_changed`,
 `error_occurred`) implementieren – die GUI blockiert dadurch nie und weiß
 nicht, woher die Daten kommen. Fehlerhafte/unvollständige Pakete werden pro
