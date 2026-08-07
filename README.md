@@ -6,6 +6,9 @@ Komplexität von Mission Planner oder QGroundControl. Gedacht für alle, die
 im Feld nur "wo ist mein Flieger und wie steht's um Akku/Funkverbindung"
 auf einen Blick sehen wollen.
 
+Ausführliches Benutzerhandbuch (PDF, Deutsch):
+[docs/ELRS_Ground_Station_Benutzerhandbuch.pdf](docs/ELRS_Ground_Station_Benutzerhandbuch.pdf)
+
 ## Was die App kann
 
 - **Live-Position auf einer OpenStreetMap-Karte**, mit nachgezogenem
