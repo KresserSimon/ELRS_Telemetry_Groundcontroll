@@ -49,7 +49,7 @@ class RouteManager(QObject):
     def add_typed(self, lat: float, lon: float, kind: str) -> None:
         """Add a point picked from the map's right-click "Wegpunkt / Startpunkt
         / Endpunkt" menu, feeding straight into this same list - the point
-        shows up as just another editable row in RouteEditorDialog.
+        shows up as just another editable row in RouteEditorOverlay.
 
         'start' inserts at the front of the list (defines where the route
         begins); 'end' appends with an RTH action so a route planned this way

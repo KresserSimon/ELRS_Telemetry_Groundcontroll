@@ -38,8 +38,7 @@ from ui.dashboard_settings_dialog import DashboardSettingsDialog
 from ui.flight_log_dialog import FlightLogSettingsDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_widget import MapWidget
-from ui.route_editor_dialog import RouteEditorDialog
-from ui.route_info_widget import RouteInfoWidget
+from ui.route_editor_overlay import RouteEditorOverlay
 
 HEARTBEAT_TIMEOUT_S = 3.0
 
@@ -96,9 +95,9 @@ class MainWindow(QMainWindow):
         self._map.route_bridge.waypoint_removed.connect(self._route_manager.remove_at)
         self._map.route_bridge.waypoint_added_typed.connect(self._route_manager.add_typed)
 
-        self._route_info = RouteInfoWidget()
-        self._route_info.setVisible(False)
-        self._map.add_overlay(self._route_info, "bottom-left")
+        self._route_overlay = RouteEditorOverlay()
+        self._route_overlay.waypoints_edited.connect(self._route_manager.set_all)
+        self._map.add_overlay(self._route_overlay, "bottom-left")
 
         self._nfz_manager = NoFlyZoneManager()
         self._nfz_manager.changed.connect(self._on_nfz_changed)
@@ -182,7 +181,9 @@ class MainWindow(QMainWindow):
 
         edit_route_action = route_menu.addAction("")
         self._i18n_actions.append((edit_route_action, "menu_route_edit"))
-        edit_route_action.triggered.connect(self._open_route_editor)
+        edit_route_action.setCheckable(True)
+        edit_route_action.setChecked(True)
+        edit_route_action.toggled.connect(self._route_overlay.setVisible)
 
         route_menu.addSeparator()
         import_route_action = route_menu.addAction("")
@@ -557,8 +558,7 @@ class MainWindow(QMainWindow):
         waypoints = self._route_manager.waypoints()
         segments = self._route_manager.segment_distances()
         self._map.render_route(waypoints, segments)
-        self._route_info.update_info(len(waypoints), sum(segments))
-        self._route_info.setVisible(len(waypoints) >= 2)
+        self._route_overlay.set_waypoints(waypoints, segments)
 
     def _import_route(self) -> None:
         filter_str = (
@@ -605,17 +605,6 @@ class MainWindow(QMainWindow):
             return
 
         self.statusBar().showMessage(i18n.tr("status_route_exported", path=path), 5000)
-
-    def _open_route_editor(self) -> None:
-        waypoints = self._route_manager.waypoints()
-        if not waypoints:
-            QMessageBox.warning(self, i18n.tr("msgbox_no_route_title"), i18n.tr("msgbox_no_route_body"))
-            return
-
-        dialog = RouteEditorDialog(waypoints, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        self._route_manager.set_all(dialog.updated_waypoints())
 
     # ----------------------------------------------------------------- map
 

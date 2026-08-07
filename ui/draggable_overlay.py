@@ -1,5 +1,5 @@
 """Shared drag-to-reposition behaviour for floating map overlay widgets
-(HorizonWidget, RouteInfoWidget, ...). A drag calls the parent MapWidget's
+(HorizonWidget, RouteEditorOverlay, ...). A drag calls the parent MapWidget's
 set_overlay_free() so the manual position sticks instead of snapping back
 to the last preset corner on the next resize.
 """

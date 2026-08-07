@@ -68,7 +68,7 @@ def check_terrain_clearance(
     where a constant-looking "height above home" profile intersects rising
     ground).
 
-    Waypoint.alt is height above home (see ui/route_editor_dialog.py), so
+    Waypoint.alt is height above home (see ui/route_editor_overlay.py), so
     this first resolves a home elevation - either at the given home_lat/lon
     (pass the live telemetry home fix when one exists) or, failing that, at
     the route's own first waypoint, since a planned route commonly starts at
