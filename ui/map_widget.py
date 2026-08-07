@@ -30,6 +30,13 @@ class MapWidget(QWebEngineView):
                 entry[1] = corner
         self._reposition_overlays()
 
+    def set_overlay_free(self, widget) -> None:
+        """Mark an overlay as manually (drag-)positioned: keep it where it is
+        on resize instead of snapping back to its last preset corner."""
+        for entry in self._overlays:
+            if entry[0] is widget:
+                entry[1] = None
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._reposition_overlays()
@@ -37,7 +44,13 @@ class MapWidget(QWebEngineView):
     def _reposition_overlays(self) -> None:
         for widget, corner in self._overlays:
             w, h = widget.width(), widget.height()
-            if corner == "top-left":
+            if corner is None:
+                # Freely (drag-)positioned: just keep it inside the current bounds.
+                max_x = max(OVERLAY_MARGIN, self.width() - w - OVERLAY_MARGIN)
+                max_y = max(OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN)
+                x = min(max(widget.x(), OVERLAY_MARGIN), max_x)
+                y = min(max(widget.y(), OVERLAY_MARGIN), max_y)
+            elif corner == "top-left":
                 x, y = OVERLAY_MARGIN, OVERLAY_MARGIN
             elif corner == "bottom-left":
                 x, y = OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN
