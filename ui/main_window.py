@@ -62,6 +62,9 @@ class MainWindow(QMainWindow):
 
         self.setStatusBar(QStatusBar())
 
+        self._worker = None
+        self._demo_mode = bool(args.demo)
+
         self._build_menu()
 
         self._last_telemetry_time = 0.0
@@ -72,8 +75,6 @@ class MainWindow(QMainWindow):
         self._heartbeat_timer.timeout.connect(self._check_heartbeat)
         self._heartbeat_timer.start()
 
-        self._worker = None
-        self._demo_mode = bool(args.demo)
         self._start_worker(demo=self._demo_mode)
 
     # ---------------------------------------------------------------- menu

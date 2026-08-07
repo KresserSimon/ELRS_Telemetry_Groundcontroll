@@ -111,6 +111,28 @@ Beschreibung auflisten. Danach:
 Diese Verbindungsart ist ein Ersatz für Weg 1/2, kein Zusatz – `--connection`
 wählt UDP (Standard) oder USB, unabhängig vom gewählten `--protocol`.
 
+## Als .exe kompilieren (Windows)
+
+```bash
+cd elrs_ground_station
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt pyinstaller
+pyinstaller --name ELRS_GroundStation --onedir main.py
+```
+
+Ergebnis liegt unter `dist\ELRS_GroundStation\ELRS_GroundStation.exe` – der
+gesamte `dist\ELRS_GroundStation`-Ordner (Exe + `_internal`-Verzeichnis mit
+Qt/WebEngine-Ressourcen, ca. 500 MB) muss zusammen weitergegeben werden,
+nicht nur die .exe allein. `--onedir` (statt `--onefile`) wird empfohlen, da
+QtWebEngine einen eigenen Hilfsprozess samt Ressourcendateien braucht, die in
+einer Single-File-Exe beim Start erst in ein Temp-Verzeichnis entpackt werden
+müssten – das funktioniert, ist aber langsamer beim Start und fehleranfälliger.
+
+Die Exe behält die Konsole (kein `--windowed`), damit `--list-ports`,
+`--demo` usw. weiterhin normal über die Kommandozeile nutzbar sind; beim
+Doppelklick öffnet sich zusätzlich ein Konsolenfenster im Hintergrund.
+
 ## Architektur
 
 ```

@@ -6,3 +6,6 @@ venv/
 *.kml
 .vscode/
 .idea/
+build/
+dist/
+*.spec
