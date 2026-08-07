@@ -43,10 +43,25 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 <script>
   var map = L.map('map', { zoomControl: true }).setView([__CENTER_LAT__, __CENTER_LON__], __ZOOM__);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+  var baseLayers = {
+    osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }),
+    satellite: L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 19, attribution: 'Tiles &copy; Esri' }
+    )
+  };
+  var currentBaseLayer = 'osm';
+  baseLayers[currentBaseLayer].addTo(map);
+
+  function setBaseLayer(id) {
+    if (!baseLayers.hasOwnProperty(id) || id === currentBaseLayer) return;
+    map.removeLayer(baseLayers[currentBaseLayer]);
+    currentBaseLayer = id;
+    baseLayers[currentBaseLayer].addTo(map);
+  }
 
   var pathLatLngs = [];
   var pathLine = L.polyline([], { color: '#ff8000', weight: 3 }).addTo(map);
@@ -235,6 +250,40 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
       routeBridge.waypoint_clicked(e.latlng.lat, e.latlng.lng);
     }
   });
+
+  // -------------------------------------------------------------- no-fly zones
+
+  var nfzLayers = [];
+  var nfzVisible = true;
+
+  function setNoFlyZones(zones) {
+    nfzLayers.forEach(function (l) { map.removeLayer(l); });
+    nfzLayers = [];
+
+    zones.forEach(function (zone) {
+      var layer;
+      if (zone.kind === 'circle') {
+        layer = L.circle([zone.center[0], zone.center[1]], {
+          radius: zone.radius_m, color: '#e74c3c', weight: 2, fillColor: '#e74c3c', fillOpacity: 0.2
+        });
+      } else {
+        var latlngs = zone.points.map(function (p) { return [p[0], p[1]]; });
+        layer = L.polygon(latlngs, { color: '#e74c3c', weight: 2, fillColor: '#e74c3c', fillOpacity: 0.2 });
+      }
+      layer.bindTooltip(zone.name, { sticky: true });
+      if (nfzVisible) { layer.addTo(map); }
+      nfzLayers.push(layer);
+    });
+  }
+
+  function setNoFlyZonesVisible(enabled) {
+    nfzVisible = enabled;
+    nfzLayers.forEach(function (l) {
+      var onMap = map.hasLayer(l);
+      if (enabled && !onMap) { l.addTo(map); }
+      else if (!enabled && onMap) { map.removeLayer(l); }
+    });
+  }
 
   if (typeof qt !== 'undefined' && qt.webChannelTransport) {
     new QWebChannel(qt.webChannelTransport, function (channel) {

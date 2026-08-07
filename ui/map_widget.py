@@ -7,6 +7,7 @@ from typing import Iterable, List, Optional
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
+from core.nfz import NoFlyZone
 from core.route import Waypoint
 from ui.map_template import get_map_html
 from ui.route_bridge import RouteBridge
@@ -91,6 +92,9 @@ class MapWidget(QWebEngineView):
     def set_vehicle_type(self, vehicle_type: str) -> None:
         self.page().runJavaScript(f"setVehicleType('{vehicle_type}');")
 
+    def set_base_layer(self, layer_id: str) -> None:
+        self.page().runJavaScript(f"setBaseLayer('{layer_id}');")
+
     def center_on_current(self) -> None:
         self.page().runJavaScript("jumpToDrone();")
 
@@ -105,3 +109,15 @@ class MapWidget(QWebEngineView):
 
     def set_route_mode(self, enabled: bool) -> None:
         self.page().runJavaScript(f"setRouteMode({'true' if enabled else 'false'});")
+
+    def render_nfz(self, zones: Iterable[NoFlyZone]) -> None:
+        payload = []
+        for z in zones:
+            if z.kind == "circle":
+                payload.append({"kind": "circle", "name": z.name, "center": list(z.center), "radius_m": z.radius_m})
+            else:
+                payload.append({"kind": "polygon", "name": z.name, "points": [list(p) for p in z.points]})
+        self.page().runJavaScript(f"setNoFlyZones({json.dumps(payload)});")
+
+    def set_nfz_visible(self, enabled: bool) -> None:
+        self.page().runJavaScript(f"setNoFlyZonesVisible({'true' if enabled else 'false'});")

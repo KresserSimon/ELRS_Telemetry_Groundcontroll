@@ -18,6 +18,15 @@ class Waypoint:
     alt: Optional[float] = None
     name: str = ""
 
+    # INAV mission fields (export/inav_mission.py). Default to a plain
+    # WAYPOINT with no extra parameters so every existing GPX/CSV/XML
+    # import path - none of which know about these - keeps working unchanged.
+    action: str = "WAYPOINT"
+    speed: float = 0.0
+    p1: int = 0
+    p2: int = 0
+    p3: int = 0
+
 
 class RouteManager(QObject):
     changed = pyqtSignal()

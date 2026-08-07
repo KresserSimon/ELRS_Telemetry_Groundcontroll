@@ -1,9 +1,12 @@
-"""Route (waypoint list) import from GPX, iNav .mission, generic XML, and CSV.
+"""Route (waypoint list) import from GPX, iNav .mission (both the legacy
+MW-XML format and the modern INAV JSON format), generic XML, and CSV.
 
 import_route_file() is the single entry point the UI calls; it picks a parser
 by file extension and falls back to content-sniffing for ambiguous/unknown
 extensions so "Route importieren..." can offer one open-file dialog instead
-of one menu item per format.
+of one menu item per format. .mission itself is ambiguous - it's used by both
+formats - so it is always content-sniffed (JSON starts with '{', the legacy
+format is XML) rather than trusted on extension alone.
 """
 from __future__ import annotations
 
@@ -13,6 +16,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional
 
 from core.route import Waypoint
+from export.inav_mission import import_inav_mission_json
 
 _LAT_KEYS = ("lat", "latitude", "y")
 _LON_KEYS = ("lon", "lng", "long", "longitude", "x")
@@ -26,7 +30,7 @@ def import_route_file(path: str) -> List[Waypoint]:
     if ext == ".csv":
         return import_csv(path)
     if ext == ".mission":
-        return import_inav_mission(path)
+        return _import_mission_sniffed(path)
     if ext == ".gpx":
         return import_gpx(path)
 
@@ -41,6 +45,22 @@ def import_route_file(path: str) -> List[Waypoint]:
     if root.find(".//missionitem") is not None or _local_tag(root.tag) in ("mission", "missions"):
         return import_inav_mission(path)
     return import_generic_xml(path)
+
+
+def _import_mission_sniffed(path: str) -> List[Waypoint]:
+    """.mission is used by both the JSON schema (export/inav_mission.py) and
+    the legacy MW-XML schema (import_inav_mission() below) - peek at the
+    first non-whitespace character to tell them apart before parsing."""
+    with open(path, "r", encoding="utf-8-sig") as f:
+        while True:
+            char = f.read(1)
+            if not char:
+                break
+            if not char.isspace():
+                if char == "{":
+                    return import_inav_mission_json(path)
+                break
+    return import_inav_mission(path)
 
 
 def _local_tag(tag: str) -> str:

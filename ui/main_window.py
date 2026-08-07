@@ -19,9 +19,11 @@ from PyQt6.QtWidgets import (
 from alerts.tts_alert import BatteryAlertMonitor, TTSWorker
 from core import i18n
 from core.dashboard_config import save_visible_fields
+from core.nfz import NoFlyZoneManager
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
 from export.flight_logger import ALL_FIELDS, FlightLogger
+from export.nfz_import import import_nfz_file
 from export.route_export import export_route_csv, export_route_gpx
 from export.route_import import import_route_file
 from export.track_export import TrackRecorder
@@ -36,12 +38,14 @@ from ui.dashboard_settings_dialog import DashboardSettingsDialog
 from ui.flight_log_dialog import FlightLogSettingsDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_widget import MapWidget
+from ui.route_editor_dialog import RouteEditorDialog
 from ui.route_info_widget import RouteInfoWidget
 
 HEARTBEAT_TIMEOUT_S = 3.0
 
 VEHICLE_TYPES = (("vehicle_quad", "quad"), ("vehicle_wing", "wing"), ("vehicle_plane", "plane"))
 LANGUAGES = (("language_de", "de"), ("language_en", "en"))
+BASE_LAYERS = (("maplayer_osm", "osm"), ("maplayer_satellite", "satellite"))
 HORIZON_CORNERS = (
     ("horizon_top_left", "top-left"),
     ("horizon_top_right", "top-right"),
@@ -94,6 +98,9 @@ class MainWindow(QMainWindow):
         self._route_info = RouteInfoWidget()
         self._route_info.setVisible(False)
         self._map.add_overlay(self._route_info, "bottom-left")
+
+        self._nfz_manager = NoFlyZoneManager()
+        self._nfz_manager.changed.connect(self._on_nfz_changed)
 
         self._last_telemetry_state = None
         self._flight_logger = FlightLogger(lambda: self._last_telemetry_state)
@@ -171,6 +178,10 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((clear_route_action, "menu_route_clear"))
         clear_route_action.triggered.connect(self._route_manager.clear)
 
+        edit_route_action = route_menu.addAction("")
+        self._i18n_actions.append((edit_route_action, "menu_route_edit"))
+        edit_route_action.triggered.connect(self._open_route_editor)
+
         route_menu.addSeparator()
         import_route_action = route_menu.addAction("")
         self._i18n_actions.append((import_route_action, "menu_route_import"))
@@ -179,6 +190,33 @@ class MainWindow(QMainWindow):
         export_route_action = route_menu.addAction("")
         self._i18n_actions.append((export_route_action, "menu_route_export"))
         export_route_action.triggered.connect(self._export_route)
+
+        map_menu = menu.addMenu("")
+        self._i18n_menus.append((map_menu, "menu_map"))
+
+        layer_menu = map_menu.addMenu("")
+        self._i18n_menus.append((layer_menu, "menu_map_layer"))
+        self._layer_group = QActionGroup(self)
+        self._layer_group.setExclusive(True)
+        for key, layer_id in BASE_LAYERS:
+            action = layer_menu.addAction("")
+            self._i18n_actions.append((action, key))
+            action.setCheckable(True)
+            action.setData(layer_id)
+            action.setChecked(layer_id == "osm")
+            self._layer_group.addAction(action)
+        self._layer_group.triggered.connect(lambda action: self._map.set_base_layer(action.data()))
+
+        map_menu.addSeparator()
+        import_nfz_action = map_menu.addAction("")
+        self._i18n_actions.append((import_nfz_action, "menu_map_nfz_import"))
+        import_nfz_action.triggered.connect(self._import_nfz)
+
+        self._nfz_visible_action = map_menu.addAction("")
+        self._i18n_actions.append((self._nfz_visible_action, "menu_map_nfz_visible"))
+        self._nfz_visible_action.setCheckable(True)
+        self._nfz_visible_action.setChecked(True)
+        self._nfz_visible_action.toggled.connect(self._map.set_nfz_visible)
 
         flightlog_menu = menu.addMenu("")
         self._i18n_menus.append((flightlog_menu, "menu_flightlog"))
@@ -551,6 +589,37 @@ class MainWindow(QMainWindow):
             return
 
         self.statusBar().showMessage(i18n.tr("status_route_exported", path=path), 5000)
+
+    def _open_route_editor(self) -> None:
+        waypoints = self._route_manager.waypoints()
+        if not waypoints:
+            QMessageBox.warning(self, i18n.tr("msgbox_no_route_title"), i18n.tr("msgbox_no_route_body"))
+            return
+
+        dialog = RouteEditorDialog(waypoints, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._route_manager.set_all(dialog.updated_waypoints())
+
+    # ----------------------------------------------------------------- map
+
+    def _on_nfz_changed(self) -> None:
+        self._map.render_nfz(self._nfz_manager.zones())
+
+    def _import_nfz(self) -> None:
+        filter_str = f"{i18n.tr('nfz_geojson_filter')};;{i18n.tr('route_csv_filter')}"
+        path, _ = QFileDialog.getOpenFileName(self, i18n.tr("menu_map_nfz_import"), "", filter_str)
+        if not path:
+            return
+
+        try:
+            zones = import_nfz_file(path)
+        except (ValueError, OSError) as exc:
+            QMessageBox.critical(self, i18n.tr("msgbox_nfz_import_failed_title"), str(exc))
+            return
+
+        self._nfz_manager.set_all(zones)
+        self.statusBar().showMessage(i18n.tr("status_nfz_imported", count=len(zones)), 5000)
 
     # ------------------------------------------------------------- export
 
