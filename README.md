@@ -1,8 +1,31 @@
 # ELRS Ground Station
 
-Eine schlanke Alternative zu Mission Planner / QGroundControl für ExpressLRS
-(ELRS) Telemetrie: Live-Karte (OpenStreetMap/Leaflet), Telemetrie-Dashboard,
-GPX/KML-Export des Flugpfads und Sprachwarnung bei niedrigem Akkustand.
+Ein schlanker Ground-Control-Bildschirm für Modelle mit ExpressLRS (ELRS):
+zeigt live, wo das Modell gerade fliegt und wie es ihm geht, ohne die
+Komplexität von Mission Planner oder QGroundControl. Gedacht für alle, die
+im Feld nur "wo ist mein Flieger und wie steht's um Akku/Funkverbindung"
+auf einen Blick sehen wollen.
+
+## Was die App kann
+
+- **Live-Position auf einer OpenStreetMap-Karte**, mit nachgezogenem
+  Flugpfad und wählbarem Fahrzeugsymbol (Quadrocopter, Wing, Flugzeug).
+- **Ein Blick-Dashboard** für GPS (Position/Höhe/Satelliten), Funkverbindung
+  (RSSI/LQ/SNR/Sendeleistung), Akku (Spannung/Restkapazität) und
+  Verbindungsstatus – jeweils mit einem eigenen Statussymbol.
+- **Sprachansage**, sobald der Akku niedrig oder kritisch wird, damit man
+  nicht ständig auf den Bildschirm schauen muss.
+- **Flugpfad-Export als GPX oder KML** nach dem Flug, zum Auswerten in
+  anderen Karten-/Analysetools.
+- **WiFi (UDP) oder direktes USB-Kabel** als Verbindungsweg zur Telemetrie,
+  zur Laufzeit umschaltbar – ebenso wie das Protokoll (MAVLink oder rohes
+  CRSF) und die Sprache der Oberfläche (Deutsch/Englisch).
+- **Demo-Modus** mit einer simulierten Flugbahn, um die App komplett ohne
+  Modell oder ELRS-Hardware auszuprobieren.
+
+Funktioniert mit Flugsteuerungen (ArduPilot/Betaflight/iNav), die ihre
+Telemetrie per MAVLink ausgeben, ebenso wie mit dem rohen CRSF-Telemetrie-
+strom direkt vom ELRS-Empfänger.
 
 ## Installation
 
@@ -47,14 +70,32 @@ python main.py --connection usb --protocol crsf --serial-port COM5 --baud 420000
 ```
 
 Weitere Optionen: `python main.py --help` (u. a. `--cells`,
-`--low-cell-voltage`, `--critical-cell-voltage` für die Akkuwarnung und
-`--demo-center lat,lon` für den Startpunkt der Simulation).
+`--low-cell-voltage`, `--critical-cell-voltage` für die Akkuwarnung,
+`--demo-center lat,lon` für den Startpunkt der Simulation und
+`--lang de|en` für die Startsprache der Oberfläche).
+
+Beim Start (außer mit `--demo`) öffnet sich zunächst ein Popup zur Auswahl
+von Verbindung (WiFi/UDP oder USB) und Protokoll (MAVLink oder CRSF) —
+Abbrechen übernimmt einfach die per Kommandozeile übergebenen/Standard-
+Einstellungen, ein zusätzlicher Button startet direkt den Demo-Modus.
 
 Im laufenden Programm:
 - **Datei → Flugpfad als GPX/KML exportieren** speichert alle bisher
   aufgezeichneten GPS-Punkte des aktuellen Fluges.
-- **Ansicht → Auto-Center** schaltet das automatische Nachführen der Karte
-  auf die aktuelle Position ein/aus.
+- **Einstellungen → Verbindung...** wechselt zur Laufzeit zwischen
+  WiFi/UDP und USB/Seriell sowie zwischen MAVLink und CRSF, inkl.
+  Host/Port bzw. seriellem Port + Baudrate — ohne die App neu zu starten.
+  Beendet dabei automatisch einen laufenden Demo-Modus.
+- **Einstellungen → Ansicht → Auto-Center** schaltet das automatische
+  Nachführen der Karte auf die aktuelle Position ein/aus.
+- **Einstellungen → Ansicht → Aktuelle Position anspringen** (`Strg+Pos1`)
+  zentriert die Karte sofort auf die letzte bekannte Position, unabhängig
+  von Auto-Center.
+- **Einstellungen → Ansicht → Fahrzeugtyp** wählt das Kartensymbol:
+  Quadrocopter, Wing (Nurflügler) oder Flugzeug.
+- **Einstellungen → Sprache → Deutsch/English** wechselt die komplette
+  Oberfläche (Menüs, Dashboard, Dialoge, Sprachwarnungen) sofort ohne
+  Neustart.
 - **Simulation → Demo-Modus** schaltet zur Laufzeit zwischen echter
   Telemetrie und simulierten Daten um.
 
@@ -138,7 +179,9 @@ Doppelklick öffnet sich zusätzlich ein Konsolenfenster im Hintergrund.
 ```
 elrs_ground_station/
   main.py                  CLI-Einstieg
-  core/telemetry_state.py  gemeinsames Datenmodell
+  core/
+    telemetry_state.py     gemeinsames Datenmodell
+    i18n.py                 DE/EN-Strings + Laufzeit-Sprachumschaltung
   telemetry/
     base_worker.py             gemeinsames QThread-Interface
     mavlink_worker.py          MAVLink-Empfänger (pymavlink), UDP oder USB/seriell
@@ -149,12 +192,14 @@ elrs_ground_station/
     serial_ports.py            Hilfsfunktion fuer --list-ports
     demo_worker.py              Simulierte Telemetrie
   ui/
-    main_window.py          Hauptfenster, verbindet Worker <-> UI
+    main_window.py           Hauptfenster, verbindet Worker <-> UI, Menüs, Startpopup
+    connection_dialog.py     Dialog zum Wechsel WiFi/USB + Protokoll (auch als Startpopup)
     map_widget.py            QWebEngineView-Wrapper um die Leaflet-Karte
-    map_template.py          Self-contained Leaflet/OSM HTML+JS
-    dashboard.py              Telemetrie-Leiste
+    map_template.py          Self-contained Leaflet/OSM HTML+JS (inkl. Fahrzeugsymbole)
+    dashboard.py             Telemetrie-Leiste mit Status-Icons
+    icons.py                  QPainter-gezeichnete Dashboard-Icons (keine Bilddateien)
   export/track_export.py    GPX/KML-Export
-  alerts/tts_alert.py        Akku-Sprachwarnung (pyttsx3, eigener Thread)
+  alerts/tts_alert.py        Akku-Sprachwarnung (pyttsx3, eigener Thread, i18n-Texte)
 ```
 
 Die komplette Netzwerk-/Parsing-Arbeit läuft in eigenen `QThread`s

@@ -7,12 +7,46 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from ui.map_template import get_map_html
 
+OVERLAY_MARGIN = 10
+CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
+
 
 class MapWidget(QWebEngineView):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._auto_center = True
+        self._overlays: list = []  # [[widget, corner], ...]
         self.setHtml(get_map_html())
+
+    def add_overlay(self, widget, corner: str = "top-right") -> None:
+        widget.setParent(self)
+        self._overlays.append([widget, corner])
+        self._reposition_overlays()
+        widget.raise_()
+
+    def set_overlay_corner(self, widget, corner: str) -> None:
+        for entry in self._overlays:
+            if entry[0] is widget:
+                entry[1] = corner
+        self._reposition_overlays()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._reposition_overlays()
+
+    def _reposition_overlays(self) -> None:
+        for widget, corner in self._overlays:
+            w, h = widget.width(), widget.height()
+            if corner == "top-left":
+                x, y = OVERLAY_MARGIN, OVERLAY_MARGIN
+            elif corner == "bottom-left":
+                x, y = OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN
+            elif corner == "bottom-right":
+                x, y = self.width() - w - OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN
+            else:  # top-right
+                x, y = self.width() - w - OVERLAY_MARGIN, OVERLAY_MARGIN
+            widget.move(x, y)
+            widget.raise_()
 
     def update_position(self, lat: float, lon: float, heading: Optional[float]) -> None:
         heading_js = "null" if heading is None else f"{heading}"
@@ -24,3 +58,9 @@ class MapWidget(QWebEngineView):
 
     def clear_path(self) -> None:
         self.page().runJavaScript("clearPath();")
+
+    def set_vehicle_type(self, vehicle_type: str) -> None:
+        self.page().runJavaScript(f"setVehicleType('{vehicle_type}');")
+
+    def center_on_current(self) -> None:
+        self.page().runJavaScript("jumpToDrone();")

@@ -14,6 +14,8 @@ class TelemetryState:
     satellites: Optional[int] = None
     gps_fix: Optional[int] = None          # 0=no fix,1=no fix,2=2D,3=3D,4-6=RTK etc (MAVLink scale)
     heading: Optional[float] = None        # degrees, 0-360
+    roll: Optional[float] = None           # degrees, positive = right bank
+    pitch: Optional[float] = None          # degrees, positive = nose up
 
     flight_mode: Optional[str] = None
 

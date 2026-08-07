@@ -9,6 +9,7 @@ directly into the PC via USB, outputting MAVLink on its USB-serial port.
 """
 from __future__ import annotations
 
+import math
 import time
 
 from pymavlink import mavutil
@@ -103,6 +104,10 @@ class MAVLinkWorker(TelemetryWorker):
                 s.flight_mode = mavutil.mode_string_v10(msg)
             except Exception:
                 s.flight_mode = f"MODE({msg.custom_mode})"
+
+        elif msg_type == "ATTITUDE":
+            s.roll = math.degrees(msg.roll)
+            s.pitch = math.degrees(msg.pitch)
 
         elif msg_type == "GLOBAL_POSITION_INT":
             s.lat = msg.lat / 1e7

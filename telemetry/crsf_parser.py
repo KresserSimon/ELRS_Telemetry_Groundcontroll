@@ -8,6 +8,7 @@ not self-explanatory from the code alone, hence the inline notes.
 """
 from __future__ import annotations
 
+import math
 import struct
 from typing import Dict, List, Optional
 
@@ -15,6 +16,7 @@ CRSF_SYNC_BYTE = 0xC8
 FRAMETYPE_GPS = 0x02
 FRAMETYPE_BATTERY_SENSOR = 0x08
 FRAMETYPE_LINK_STATISTICS = 0x14
+FRAMETYPE_ATTITUDE = 0x1E
 FRAMETYPE_FLIGHT_MODE = 0x21
 
 MAX_FRAME_LEN = 64
@@ -94,6 +96,8 @@ class CRSFParser:
                 return self._parse_battery(payload)
             if frame_type == FRAMETYPE_LINK_STATISTICS and len(payload) == 10:
                 return self._parse_link_stats(payload)
+            if frame_type == FRAMETYPE_ATTITUDE and len(payload) == 6:
+                return self._parse_attitude(payload)
             if frame_type == FRAMETYPE_FLIGHT_MODE:
                 return self._parse_flight_mode(payload)
         except struct.error:
@@ -110,6 +114,14 @@ class CRSFParser:
             "alt": altitude - 1000.0,      # CRSF encodes altitude with +1000m offset
             "heading": heading / 100.0,
             "satellites": satellites,
+        }
+
+    @staticmethod
+    def _parse_attitude(payload: bytes) -> Dict:
+        pitch, roll, _yaw = struct.unpack(">hhh", payload)  # radians * 10000
+        return {
+            "pitch": math.degrees(pitch / 10000.0),
+            "roll": math.degrees(roll / 10000.0),
         }
 
     @staticmethod

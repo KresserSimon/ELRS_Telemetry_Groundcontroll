@@ -18,6 +18,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--demo", action="store_true", help="Im Simulationsmodus starten (keine Hardware noetig)")
     parser.add_argument("--protocol", choices=["mavlink", "crsf"], default="mavlink",
                          help="Telemetrieprotokoll (Standard: mavlink)")
+    parser.add_argument("--lang", choices=["de", "en"], default="de",
+                         help="UI-Sprache (auch zur Laufzeit ueber Menue -> Sprache umschaltbar)")
 
     parser.add_argument("--connection", choices=["udp", "usb"], default="udp",
                          help="Transportweg: 'udp' fuer WiFi-Bridge, 'usb' fuer direkte USB/seriell-Verbindung")
@@ -58,12 +60,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     return args
 
 
-def _print_serial_ports() -> None:
+def _print_serial_ports(lang: str) -> None:
     from telemetry.serial_ports import list_serial_ports
 
     ports = list_serial_ports()
     if not ports:
-        print("Keine USB/seriell-Ports gefunden.")
+        print("No USB/serial ports found." if lang == "en" else "Keine USB/seriell-Ports gefunden.")
         return
     for p in ports:
         print(f"{p.device}\t{p.description}")
@@ -73,7 +75,7 @@ def main() -> int:
     args = parse_args()
 
     if args.list_ports:
-        _print_serial_ports()
+        _print_serial_ports(args.lang)
         return 0
 
     from PyQt6.QtWidgets import QApplication

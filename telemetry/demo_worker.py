@@ -55,6 +55,10 @@ class DemoWorker(TelemetryWorker):
             heading_rad = math.atan2(math.cos(angle), -math.sin(angle))
             s.heading = (math.degrees(heading_rad) + 360) % 360
 
+            # constant-radius turn -> constant bank angle, plus a little life via jitter/pitch bob
+            s.roll = -18.0 + random.uniform(-1.5, 1.5)
+            s.pitch = 4.0 * math.sin(angle * 2) + random.uniform(-0.5, 0.5)
+
             mode_idx = int(t // 15) % len(FLIGHT_MODES)
             s.flight_mode = FLIGHT_MODES[mode_idx]
 

@@ -10,6 +10,7 @@ import queue
 
 from PyQt6.QtCore import QThread
 
+from core import i18n
 from core.telemetry_state import TelemetryState
 
 LEVEL_NONE = "none"
@@ -124,5 +125,5 @@ class BatteryAlertMonitor:
     @staticmethod
     def _message(level: str) -> str:
         if level == LEVEL_CRITICAL:
-            return "Warnung. Akku kritisch niedrig. Bitte sofort landen."
-        return "Warnung. Akkuspannung niedrig."
+            return i18n.tr("tts_critical")
+        return i18n.tr("tts_low")
