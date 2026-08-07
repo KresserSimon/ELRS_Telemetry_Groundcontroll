@@ -1,8 +1,10 @@
 """Self-contained Leaflet/OSM HTML page loaded once into QWebEngineView.
 
 All live updates afterwards go through small JS function calls
-(updateDrone / setAutoCenter / clearPath / setVehicleType / jumpToDrone) via
-runJavaScript(), so the map never reloads and the marker moves smoothly.
+(updateDrone / setAutoCenter / clearPath / setVehicleType / jumpToDrone /
+setRoute / setRouteMode) via runJavaScript(), so the map never reloads and
+the marker moves smoothly. Route-drawing clicks travel the other way (JS ->
+Python) over a QWebChannel bridge registered as `routeBridge`.
 """
 
 MAP_HTML_TEMPLATE = """<!DOCTYPE html>
@@ -12,14 +14,23 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <style>
-  html, body, #map { height: 100%; margin: 0; padding: 0; background: #1b1f24; }
+  html, body, #map { height: 100%; margin: 0; padding: 0; background: #1b1f24; cursor: default; }
+  #map.route-mode { cursor: crosshair; }
   .drone-icon {
     width: 22px; height: 22px;
     display: flex; align-items: center; justify-content: center;
     transform-origin: 50% 50%;
   }
   .drone-icon svg { width: 22px; height: 22px; filter: drop-shadow(0 0 2px rgba(0,0,0,0.6)); }
+  .route-wp-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #2ecc71; color: #ffffff; font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid #ffffff; box-shadow: 0 0 2px rgba(0,0,0,0.6);
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -129,6 +140,55 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     pathLatLngs = [];
     pathLine.setLatLngs([]);
     hasCentered = false;
+  }
+
+  // ---------------------------------------------------------- planned route
+
+  var routeMarkers = [];
+  var routeLine = L.polyline([], { color: '#2ecc71', weight: 3, dashArray: '6,6' }).addTo(map);
+  var routeMode = false;
+  var routeBridge = null;
+
+  function setRoute(wps) {
+    routeMarkers.forEach(function (m) { map.removeLayer(m); });
+    routeMarkers = [];
+
+    var latlngs = [];
+    wps.forEach(function (wp, idx) {
+      var latlng = [wp.lat, wp.lon];
+      latlngs.push(latlng);
+      var icon = L.divIcon({
+        className: '',
+        html: '<div class="route-wp-dot">' + (idx + 1) + '</div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+      var marker = L.marker(latlng, { icon: icon, zIndexOffset: 500 }).addTo(map);
+      marker.on('click', function (e) {
+        L.DomEvent.stopPropagation(e);
+        if (routeBridge) { routeBridge.waypoint_marker_clicked(idx); }
+      });
+      routeMarkers.push(marker);
+    });
+    routeLine.setLatLngs(latlngs);
+  }
+
+  function setRouteMode(enabled) {
+    routeMode = enabled;
+    var el = document.getElementById('map');
+    if (enabled) { el.classList.add('route-mode'); } else { el.classList.remove('route-mode'); }
+  }
+
+  map.on('click', function (e) {
+    if (routeMode && routeBridge) {
+      routeBridge.waypoint_clicked(e.latlng.lat, e.latlng.lng);
+    }
+  });
+
+  if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+      routeBridge = channel.objects.routeBridge;
+    });
   }
 </script>
 </body>

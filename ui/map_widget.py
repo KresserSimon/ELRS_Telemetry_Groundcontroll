@@ -1,11 +1,15 @@
 """QWebEngineView wrapper exposing a tiny Python API over the Leaflet page."""
 from __future__ import annotations
 
-from typing import Optional
+import json
+from typing import Iterable, Optional
 
+from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
+from core.route import Waypoint
 from ui.map_template import get_map_html
+from ui.route_bridge import RouteBridge
 
 OVERLAY_MARGIN = 10
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -16,6 +20,12 @@ class MapWidget(QWebEngineView):
         super().__init__(parent)
         self._auto_center = True
         self._overlays: list = []  # [[widget, corner], ...]
+
+        self.route_bridge = RouteBridge()
+        self._channel = QWebChannel(self.page())
+        self._channel.registerObject("routeBridge", self.route_bridge)
+        self.page().setWebChannel(self._channel)
+
         self.setHtml(get_map_html())
 
     def add_overlay(self, widget, corner: str = "top-right") -> None:
@@ -77,3 +87,10 @@ class MapWidget(QWebEngineView):
 
     def center_on_current(self) -> None:
         self.page().runJavaScript("jumpToDrone();")
+
+    def render_route(self, waypoints: Iterable[Waypoint]) -> None:
+        payload = [{"lat": wp.lat, "lon": wp.lon} for wp in waypoints]
+        self.page().runJavaScript(f"setRoute({json.dumps(payload)});")
+
+    def set_route_mode(self, enabled: bool) -> None:
+        self.page().runJavaScript(f"setRouteMode({'true' if enabled else 'false'});")

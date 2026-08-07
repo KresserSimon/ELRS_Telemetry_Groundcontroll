@@ -22,6 +22,11 @@ auf einen Blick sehen wollen.
   CRSF) und die Sprache der Oberfläche (Deutsch/Englisch).
 - **Demo-Modus** mit einer simulierten Flugbahn, um die App komplett ohne
   Modell oder ELRS-Hardware auszuprobieren.
+- **Künstlicher Horizont** als frei verschiebbares Overlay auf der Karte
+  (Roll/Pitch aus MAVLink- oder CRSF-Attitude-Daten).
+- **Route/Wegpunkte auf der Karte planen**: per Klick zeichnen oder aus
+  GPX, iNav `.mission`, generischem XML oder CSV importieren – als
+  eigene, von der geflogenen Spur unabhängige Referenzlinie.
 
 Funktioniert mit Flugsteuerungen (ArduPilot/Betaflight/iNav), die ihre
 Telemetrie per MAVLink ausgeben, ebenso wie mit dem rohen CRSF-Telemetrie-
@@ -82,6 +87,14 @@ Einstellungen, ein zusätzlicher Button startet direkt den Demo-Modus.
 Im laufenden Programm:
 - **Datei → Flugpfad als GPX/KML exportieren** speichert alle bisher
   aufgezeichneten GPS-Punkte des aktuellen Fluges.
+- **Route → Wegpunkt-Modus** schaltet den Klick-zum-Hinzufügen-Modus auf
+  der Karte ein; ein Klick auf einen bestehenden Wegpunkt entfernt ihn
+  wieder. **Route → Letzten Wegpunkt entfernen / Route löschen** für die
+  restliche Bearbeitung.
+- **Route → Route importieren...** lädt eine Wegpunktliste aus GPX,
+  iNav `.mission`, generischem XML oder CSV und zeichnet sie als
+  gestrichelte grüne Linie mit nummerierten Punkten auf der Karte (CSV
+  braucht Spalten wie `lat`/`lon`/`latitude`/`longitude`, `alt` optional).
 - **Einstellungen → Verbindung...** wechselt zur Laufzeit zwischen
   WiFi/UDP und USB/Seriell sowie zwischen MAVLink und CRSF, inkl.
   Host/Port bzw. seriellem Port + Baudrate — ohne die App neu zu starten.
@@ -181,6 +194,7 @@ elrs_ground_station/
   main.py                  CLI-Einstieg
   core/
     telemetry_state.py     gemeinsames Datenmodell
+    route.py                Wegpunkt/Routen-Datenmodell (RouteManager)
     i18n.py                 DE/EN-Strings + Laufzeit-Sprachumschaltung
   telemetry/
     base_worker.py             gemeinsames QThread-Interface
@@ -194,11 +208,15 @@ elrs_ground_station/
   ui/
     main_window.py           Hauptfenster, verbindet Worker <-> UI, Menüs, Startpopup
     connection_dialog.py     Dialog zum Wechsel WiFi/USB + Protokoll (auch als Startpopup)
-    map_widget.py            QWebEngineView-Wrapper um die Leaflet-Karte
-    map_template.py          Self-contained Leaflet/OSM HTML+JS (inkl. Fahrzeugsymbole)
+    map_widget.py            QWebEngineView-Wrapper um die Leaflet-Karte + QWebChannel
+    map_template.py          Self-contained Leaflet/OSM HTML+JS (Fahrzeugsymbole, Routen-Layer)
+    route_bridge.py          QWebChannel-Bruecke fuer Wegpunkt-Klicks (JS -> Python)
+    horizon_widget.py        Kuenstlicher Horizont (QPainter, frei verschiebbares Overlay)
     dashboard.py             Telemetrie-Leiste mit Status-Icons
     icons.py                  QPainter-gezeichnete Dashboard-Icons (keine Bilddateien)
-  export/track_export.py    GPX/KML-Export
+  export/
+    track_export.py         GPX/KML-Export des geflogenen Pfads
+    route_import.py          Routen-Import: GPX, iNav .mission, generisches XML, CSV
   alerts/tts_alert.py        Akku-Sprachwarnung (pyttsx3, eigener Thread, i18n-Texte)
 ```
 

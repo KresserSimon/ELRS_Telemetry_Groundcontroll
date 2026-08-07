@@ -18,7 +18,9 @@ from PyQt6.QtWidgets import (
 
 from alerts.tts_alert import BatteryAlertMonitor, TTSWorker
 from core import i18n
+from core.route import RouteManager
 from core.telemetry_state import TelemetryState
+from export.route_import import import_route_file
 from export.track_export import TrackRecorder
 from telemetry.crsf_serial_worker import CRSFSerialWorker
 from telemetry.crsf_worker import CRSFWorker
@@ -65,6 +67,11 @@ class MainWindow(QMainWindow):
         self._dashboard = Dashboard()
         self._horizon = HorizonWidget()
         self._map.add_overlay(self._horizon, DEFAULT_HORIZON_CORNER)
+
+        self._route_manager = RouteManager()
+        self._route_manager.changed.connect(self._on_route_changed)
+        self._map.route_bridge.waypoint_added.connect(self._route_manager.add)
+        self._map.route_bridge.waypoint_removed.connect(self._route_manager.remove_at)
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -119,6 +126,27 @@ class MainWindow(QMainWindow):
         exit_action = file_menu.addAction("")
         self._i18n_actions.append((exit_action, "menu_file_exit"))
         exit_action.triggered.connect(self.close)
+
+        route_menu = menu.addMenu("")
+        self._i18n_menus.append((route_menu, "menu_route"))
+
+        self._route_mode_action = route_menu.addAction("")
+        self._i18n_actions.append((self._route_mode_action, "menu_route_waypoint_mode"))
+        self._route_mode_action.setCheckable(True)
+        self._route_mode_action.toggled.connect(self._map.set_route_mode)
+
+        remove_last_wp_action = route_menu.addAction("")
+        self._i18n_actions.append((remove_last_wp_action, "menu_route_remove_last"))
+        remove_last_wp_action.triggered.connect(self._route_manager.remove_last)
+
+        clear_route_action = route_menu.addAction("")
+        self._i18n_actions.append((clear_route_action, "menu_route_clear"))
+        clear_route_action.triggered.connect(self._route_manager.clear)
+
+        route_menu.addSeparator()
+        import_route_action = route_menu.addAction("")
+        self._i18n_actions.append((import_route_action, "menu_route_import"))
+        import_route_action.triggered.connect(self._import_route)
 
         settings_menu = menu.addMenu("")
         self._i18n_menus.append((settings_menu, "menu_settings"))
@@ -322,6 +350,32 @@ class MainWindow(QMainWindow):
             return
         if (time.time() - self._last_telemetry_time) > HEARTBEAT_TIMEOUT_S:
             self._dashboard.set_connection_status(False)
+
+    # --------------------------------------------------------------- route
+
+    def _on_route_changed(self) -> None:
+        self._map.render_route(self._route_manager.waypoints())
+
+    def _import_route(self) -> None:
+        filter_str = (
+            f"{i18n.tr('route_all_supported_filter')};;"
+            f"{i18n.tr('export_gpx_filter')};;"
+            f"{i18n.tr('route_mission_filter')};;"
+            f"{i18n.tr('route_xml_filter')};;"
+            f"{i18n.tr('route_csv_filter')}"
+        )
+        path, _ = QFileDialog.getOpenFileName(self, i18n.tr("menu_route_import"), "", filter_str)
+        if not path:
+            return
+
+        try:
+            waypoints = import_route_file(path)
+        except (ValueError, OSError) as exc:
+            QMessageBox.critical(self, i18n.tr("msgbox_route_import_failed_title"), str(exc))
+            return
+
+        self._route_manager.set_all(waypoints)
+        self.statusBar().showMessage(i18n.tr("status_route_imported", count=len(waypoints)), 5000)
 
     # ------------------------------------------------------------- export
 
