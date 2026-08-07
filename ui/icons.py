@@ -80,6 +80,24 @@ def signal_icon(level: int = 0) -> QPixmap:
     return pm
 
 
+def compass_icon() -> QPixmap:
+    pm, p = _canvas()
+    p.setPen(QPen(STROKE, 1.3))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QRectF(2, 2, 18, 18))
+
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(ACCENT)
+    p.drawPolygon(QPolygonF([QPointF(11, 4), QPointF(13.5, 11), QPointF(11, 9.5)]))
+    p.setBrush(DIM)
+    p.drawPolygon(QPolygonF([QPointF(11, 18), QPointF(8.5, 11), QPointF(11, 12.5)]))
+
+    p.setBrush(STROKE)
+    p.drawEllipse(QRectF(9.5, 9.5, 3, 3))
+    p.end()
+    return pm
+
+
 def battery_icon(percent: Optional[int]) -> QPixmap:
     pm, p = _canvas()
     body = QRectF(2, 6, 16, 10)
@@ -97,6 +115,22 @@ def battery_icon(percent: Optional[int]) -> QPixmap:
         p.setBrush(color)
         p.drawRoundedRect(QRectF(inner.left(), inner.top(), fill_w, inner.height()), 1, 1)
 
+    p.end()
+    return pm
+
+
+def sensor_icon() -> QPixmap:
+    pm, p = _canvas()
+    p.setPen(QPen(STROKE, 1.4))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawArc(QRectF(2, 3, 18, 18), 20 * 16, 320 * 16)
+
+    p.setPen(QPen(ACCENT, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+    p.drawLine(QPointF(11, 12), QPointF(16, 7))
+
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(STROKE)
+    p.drawEllipse(QRectF(9, 10, 4, 4))
     p.end()
     return pm
 

@@ -78,6 +78,17 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   var droneMarker = null;
   var lastHeading = null;
 
+  var homeMarker = null;
+  var homeIcon = L.divIcon({
+    className: '',
+    html: '<svg viewBox="0 0 24 24" width="26" height="26" style="filter: drop-shadow(0 0 2px rgba(0,0,0,0.7));">'
+      + '<path d="M12 2 L22 11 L19 11 L19 22 L14 22 L14 15 L10 15 L10 22 L5 22 L5 11 L2 11 Z" '
+      + 'fill="#3ba7ff" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>'
+      + '</svg>',
+    iconSize: [26, 26],
+    iconAnchor: [13, 24]
+  });
+
   var autoCenter = true;
   var hasCentered = false;
 
@@ -107,6 +118,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     applyRotation();
 
     if (!hasCentered) {
+      homeMarker = L.marker(latlng, { icon: homeIcon, zIndexOffset: -100 }).addTo(map);
       map.setView(latlng, __ZOOM__);
       hasCentered = true;
     } else if (autoCenter) {
@@ -140,6 +152,10 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     pathLatLngs = [];
     pathLine.setLatLngs([]);
     hasCentered = false;
+    if (homeMarker) {
+      map.removeLayer(homeMarker);
+      homeMarker = null;
+    }
   }
 
   // ---------------------------------------------------------- planned route

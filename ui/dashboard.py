@@ -1,11 +1,17 @@
-"""Telemetry dashboard bar: GPS / link quality / battery / connection status."""
+"""Telemetry dashboard bar: GPS / link quality / battery / sensors /
+long-range / connection status. Which individual fields are shown is
+user-configurable (see DashboardSettingsDialog) and persisted as their
+preferred default layout via core.dashboard_config.
+"""
 from __future__ import annotations
 
 import math
+import time
 
 from PyQt6.QtWidgets import QGroupBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from core import i18n
+from core import geo, i18n
+from core.dashboard_config import load_visible_fields
 from core.telemetry_state import TelemetryState
 from ui import icons
 
@@ -28,7 +34,7 @@ def _icon_label(pixmap) -> QLabel:
 class _Field(QWidget):
     def __init__(self, caption_key: str) -> None:
         super().__init__()
-        self._caption_key = caption_key
+        self.caption_key = caption_key
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(0)
@@ -42,7 +48,7 @@ class _Field(QWidget):
         self.value.setText(text)
 
     def retranslate(self) -> None:
-        self.caption_label.setText(i18n.tr(self._caption_key))
+        self.caption_label.setText(i18n.tr(self.caption_key))
 
 
 class Dashboard(QWidget):
@@ -50,7 +56,12 @@ class Dashboard(QWidget):
         super().__init__(parent)
         self._fields: list[_Field] = []
         self._group_boxes: list[tuple[QGroupBox, str]] = []
+        self._fields_by_box: dict = {}
         self._connected = False
+        self._visible_fields: set = set()
+
+        self._home = None       # (lat, lon) of the first GPS fix this session
+        self._flight_start = None  # time.monotonic() at that first fix
 
         root = QHBoxLayout(self)
         root.setContentsMargins(8, 6, 8, 6)
@@ -76,9 +87,32 @@ class Dashboard(QWidget):
 
         self.voltage = _Field("dash_voltage")
         self.remaining = _Field("dash_remaining")
+        self.min_cell = _Field("dash_min_cell")
+        self.battery_current = _Field("dash_battery_current")
+        self.battery_capacity_used = _Field("dash_battery_capacity_used")
         self.battery_icon_label = _icon_label(icons.battery_icon(None))
-        root.addWidget(self._group("dash_battery", [self.voltage, self.remaining],
-                                    icon_label=self.battery_icon_label))
+        root.addWidget(self._group(
+            "dash_battery",
+            [self.voltage, self.remaining, self.min_cell, self.battery_current, self.battery_capacity_used],
+            icon_label=self.battery_icon_label,
+        ))
+
+        self.vario = _Field("dash_vario")
+        self.baro_alt = _Field("dash_baro_alt")
+        self.rpm = _Field("dash_rpm")
+        self.temperature = _Field("dash_temperature")
+        root.addWidget(self._group("dash_sensors", [self.vario, self.baro_alt, self.rpm, self.temperature],
+                                    icons.sensor_icon()))
+
+        self.groundspeed = _Field("dash_groundspeed")
+        self.distance_home = _Field("dash_distance_home")
+        self.bearing_home = _Field("dash_bearing_home")
+        self.flight_timer = _Field("dash_flight_timer")
+        root.addWidget(self._group(
+            "dash_longrange",
+            [self.groundspeed, self.distance_home, self.bearing_home, self.flight_timer],
+            icons.compass_icon(),
+        ))
 
         self.conn_icon_label = _icon_label(icons.status_led_icon(False))
         self.conn_text = QLabel()
@@ -100,6 +134,9 @@ class Dashboard(QWidget):
         self.set_connection_status(False)
         self.retranslate()
 
+        saved = load_visible_fields()
+        self.apply_field_visibility(saved if saved is not None else self.all_field_keys())
+
         i18n.on_language_changed(self.retranslate)
 
     def _group(self, title_key: str, fields: list, icon_pixmap=None, icon_label: QLabel = None) -> QGroupBox:
@@ -111,10 +148,40 @@ class Dashboard(QWidget):
             icon_label = _icon_label(icon_pixmap)
         if icon_label is not None:
             layout.addWidget(icon_label)
+        self._fields_by_box[box] = list(fields)
         for f in fields:
             layout.addWidget(f)
             self._fields.append(f)
         return box
+
+    # ------------------------------------------------------- configuration
+
+    def field_catalog(self) -> list:
+        """[(group_title_key, [field_caption_key, ...]), ...] for the settings dialog."""
+        return [
+            (title_key, [f.caption_key for f in self._fields_by_box.get(box, [])])
+            for box, title_key in self._group_boxes
+            if self._fields_by_box.get(box)
+        ]
+
+    def all_field_keys(self) -> set:
+        return {f.caption_key for f in self._fields}
+
+    def visible_fields(self) -> set:
+        return set(self._visible_fields)
+
+    def apply_field_visibility(self, keys: set) -> None:
+        self._visible_fields = set(keys)
+        for f in self._fields:
+            f.setVisible(f.caption_key in self._visible_fields)
+        for box, fields in self._fields_by_box.items():
+            box.setVisible(any(f.caption_key in self._visible_fields for f in fields))
+
+    # ------------------------------------------------------------- session
+
+    def reset_session(self) -> None:
+        self._home = None
+        self._flight_start = None
 
     def retranslate(self) -> None:
         for box, key in self._group_boxes:
@@ -141,7 +208,37 @@ class Dashboard(QWidget):
 
         self.voltage.set_text(f"{state.battery_voltage:.2f}" if state.battery_voltage is not None else _NA)
         self.remaining.set_text(str(state.battery_remaining) if state.battery_remaining is not None else _NA)
+        self.min_cell.set_text(f"{min(state.cell_voltages):.2f}" if state.cell_voltages else _NA)
+        self.battery_current.set_text(f"{state.battery_current:.1f}" if state.battery_current is not None else _NA)
+        self.battery_capacity_used.set_text(
+            f"{state.battery_capacity_used:.0f}" if state.battery_capacity_used is not None else _NA
+        )
         self.battery_icon_label.setPixmap(icons.battery_icon(state.battery_remaining))
+
+        self.vario.set_text(f"{state.vario:+.1f}" if state.vario is not None else _NA)
+        self.baro_alt.set_text(f"{state.baro_altitude:.1f}" if state.baro_altitude is not None else _NA)
+        self.rpm.set_text(str(state.rpm) if state.rpm is not None else _NA)
+        self.temperature.set_text(f"{state.temperature:.1f}" if state.temperature is not None else _NA)
+
+        self.groundspeed.set_text(f"{state.groundspeed * 3.6:.1f}" if state.groundspeed is not None else _NA)
+
+        if state.has_gps_fix():
+            if self._home is None:
+                self._home = (state.lat, state.lon)
+                self._flight_start = time.monotonic()
+            dist = geo.haversine_distance_m(state.lat, state.lon, *self._home)
+            bearing = geo.bearing_deg(state.lat, state.lon, *self._home)
+            self.distance_home.set_text(f"{dist:.0f}")
+            self.bearing_home.set_text(f"{bearing:.0f}°")
+        else:
+            self.distance_home.set_text(_NA)
+            self.bearing_home.set_text(_NA)
+
+        if self._flight_start is not None:
+            elapsed = int(time.monotonic() - self._flight_start)
+            self.flight_timer.set_text(f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+        else:
+            self.flight_timer.set_text(_NA)
 
         self.set_connection_status(state.connected)
 

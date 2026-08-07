@@ -51,6 +51,12 @@ class MapWidget(QWebEngineView):
         super().resizeEvent(event)
         self._reposition_overlays()
 
+    def reposition_overlays(self) -> None:
+        """Re-clamp all overlays into the current bounds - call after resizing
+        an overlay widget itself (e.g. a scale change), since that doesn't
+        raise a MapWidget resize event on its own."""
+        self._reposition_overlays()
+
     def _reposition_overlays(self) -> None:
         for widget, corner in self._overlays:
             w, h = widget.width(), widget.height()

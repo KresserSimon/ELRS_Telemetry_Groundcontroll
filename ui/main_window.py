@@ -18,16 +18,21 @@ from PyQt6.QtWidgets import (
 
 from alerts.tts_alert import BatteryAlertMonitor, TTSWorker
 from core import i18n
+from core.dashboard_config import save_visible_fields
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
+from export.flight_logger import ALL_FIELDS, FlightLogger
 from export.route_import import import_route_file
 from export.track_export import TrackRecorder
 from telemetry.crsf_serial_worker import CRSFSerialWorker
 from telemetry.crsf_worker import CRSFWorker
 from telemetry.demo_worker import DemoWorker
 from telemetry.mavlink_worker import MAVLinkWorker
+from ui.battery_settings_dialog import BatterySettingsDialog
 from ui.connection_dialog import ConnectionSettingsDialog
 from ui.dashboard import Dashboard
+from ui.dashboard_settings_dialog import DashboardSettingsDialog
+from ui.flight_log_dialog import FlightLogSettingsDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_widget import MapWidget
 
@@ -42,6 +47,13 @@ HORIZON_CORNERS = (
     ("horizon_bottom_right", "bottom-right"),
 )
 DEFAULT_HORIZON_CORNER = "top-right"
+HORIZON_SCALES = (
+    ("horizon_scale_small", 0.75),
+    ("horizon_scale_normal", 1.0),
+    ("horizon_scale_large", 1.5),
+    ("horizon_scale_xlarge", 2.0),
+)
+DEFAULT_HORIZON_SCALE = 1.0
 
 
 class MainWindow(QMainWindow):
@@ -62,6 +74,10 @@ class MainWindow(QMainWindow):
             low_cell_voltage=args.low_cell_voltage,
             critical_cell_voltage=args.critical_cell_voltage,
         )
+        self._battery_chemistry = "lipo"
+        self._battery_cells = args.cells
+        self._battery_low_v = args.low_cell_voltage
+        self._battery_critical_v = args.critical_cell_voltage
 
         self._map = MapWidget()
         self._dashboard = Dashboard()
@@ -72,6 +88,11 @@ class MainWindow(QMainWindow):
         self._route_manager.changed.connect(self._on_route_changed)
         self._map.route_bridge.waypoint_added.connect(self._route_manager.add)
         self._map.route_bridge.waypoint_removed.connect(self._route_manager.remove_at)
+
+        self._last_telemetry_state = None
+        self._flight_logger = FlightLogger(lambda: self._last_telemetry_state)
+        self._log_fields = list(ALL_FIELDS)
+        self._log_interval = 1.0
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -148,12 +169,32 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((import_route_action, "menu_route_import"))
         import_route_action.triggered.connect(self._import_route)
 
+        flightlog_menu = menu.addMenu("")
+        self._i18n_menus.append((flightlog_menu, "menu_flightlog"))
+
+        flightlog_settings_action = flightlog_menu.addAction("")
+        self._i18n_actions.append((flightlog_settings_action, "menu_flightlog_settings"))
+        flightlog_settings_action.triggered.connect(self._open_flight_log_settings)
+
+        self._flightlog_active_action = flightlog_menu.addAction("")
+        self._i18n_actions.append((self._flightlog_active_action, "menu_flightlog_active"))
+        self._flightlog_active_action.setCheckable(True)
+        self._flightlog_active_action.toggled.connect(self._toggle_flight_logging)
+
         settings_menu = menu.addMenu("")
         self._i18n_menus.append((settings_menu, "menu_settings"))
 
         conn_settings_action = settings_menu.addAction("")
         self._i18n_actions.append((conn_settings_action, "menu_connection_settings"))
         conn_settings_action.triggered.connect(self._open_connection_dialog)
+
+        battery_settings_action = settings_menu.addAction("")
+        self._i18n_actions.append((battery_settings_action, "menu_battery_settings"))
+        battery_settings_action.triggered.connect(self._open_battery_settings)
+
+        dashboard_settings_action = settings_menu.addAction("")
+        self._i18n_actions.append((dashboard_settings_action, "menu_dashboard_settings"))
+        dashboard_settings_action.triggered.connect(self._open_dashboard_settings)
         settings_menu.addSeparator()
 
         view_menu = settings_menu.addMenu("")
@@ -202,6 +243,19 @@ class MainWindow(QMainWindow):
         self._horizon_pos_group.triggered.connect(
             lambda action: self._map.set_overlay_corner(self._horizon, action.data())
         )
+
+        horizon_scale_menu = view_menu.addMenu("")
+        self._i18n_menus.append((horizon_scale_menu, "menu_view_horizon_scale"))
+        self._horizon_scale_group = QActionGroup(self)
+        self._horizon_scale_group.setExclusive(True)
+        for key, scale in HORIZON_SCALES:
+            action = horizon_scale_menu.addAction("")
+            self._i18n_actions.append((action, key))
+            action.setCheckable(True)
+            action.setData(scale)
+            action.setChecked(scale == DEFAULT_HORIZON_SCALE)
+            self._horizon_scale_group.addAction(action)
+        self._horizon_scale_group.triggered.connect(self._set_horizon_scale)
 
         settings_menu.addSeparator()
         lang_menu = settings_menu.addMenu("")
@@ -266,6 +320,7 @@ class MainWindow(QMainWindow):
         self._has_fix = False
         self._map.clear_path()
         self._track_recorder.clear()
+        self._dashboard.reset_session()
 
         if demo:
             status = i18n.tr("status_demo_started")
@@ -325,10 +380,63 @@ class MainWindow(QMainWindow):
         self._set_demo_checked_silently(False)
         self._start_worker(demo=False)
 
+    def _open_battery_settings(self) -> None:
+        dialog = BatterySettingsDialog(
+            self._battery_chemistry, self._battery_cells, self._battery_low_v, self._battery_critical_v, self
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._battery_chemistry = dialog.chemistry()
+        self._battery_cells = dialog.cells()
+        self._battery_low_v = dialog.low_cell_voltage()
+        self._battery_critical_v = dialog.critical_cell_voltage()
+        self._battery_monitor.configure(self._battery_cells, self._battery_low_v, self._battery_critical_v)
+
+    def _set_horizon_scale(self, action) -> None:
+        self._horizon.set_scale(action.data())
+        self._map.reposition_overlays()
+
+    def _open_dashboard_settings(self) -> None:
+        dialog = DashboardSettingsDialog(self._dashboard.field_catalog(), self._dashboard.visible_fields(), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        keys = dialog.visible_fields()
+        self._dashboard.apply_field_visibility(keys)
+        save_visible_fields(keys)
+
+    def _open_flight_log_settings(self) -> None:
+        dialog = FlightLogSettingsDialog(self._log_fields, self._log_interval, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        # Only applies to the next time logging is (re)started - changing the
+        # column set of an already-open CSV mid-file would corrupt it.
+        self._log_fields = dialog.selected_fields()
+        self._log_interval = dialog.interval_s()
+
+    def _toggle_flight_logging(self, enabled: bool) -> None:
+        if enabled:
+            default_name = f"flightlog_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+            path, _ = QFileDialog.getSaveFileName(
+                self, i18n.tr("flightlog_save_dialog_title"), default_name, i18n.tr("route_csv_filter")
+            )
+            if not path:
+                self._flightlog_active_action.blockSignals(True)
+                self._flightlog_active_action.setChecked(False)
+                self._flightlog_active_action.blockSignals(False)
+                return
+            self._flight_logger.start(path, self._log_fields, self._log_interval)
+            self.statusBar().showMessage(i18n.tr("status_flightlog_started", path=path), 5000)
+        else:
+            self._flight_logger.stop()
+            self.statusBar().showMessage(i18n.tr("status_flightlog_stopped"), 5000)
+
     # ------------------------------------------------------------ signals
 
     def _on_telemetry(self, state: TelemetryState) -> None:
         self._last_telemetry_time = time.time()
+        self._last_telemetry_state = state
         self._dashboard.update_state(state)
         self._horizon.update_attitude(state.roll, state.pitch)
 
@@ -406,5 +514,6 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         if self._worker is not None:
             self._worker.stop()
+        self._flight_logger.stop()
         self._tts_worker.stop()
         super().closeEvent(event)

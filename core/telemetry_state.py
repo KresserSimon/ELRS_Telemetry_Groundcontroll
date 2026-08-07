@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field, replace
-from typing import Optional
+from typing import List, Optional
 
 
 @dataclass
@@ -21,11 +21,21 @@ class TelemetryState:
 
     battery_voltage: Optional[float] = None    # volts
     battery_remaining: Optional[int] = None    # percent, 0-100
+    battery_current: Optional[float] = None    # amps
+    battery_capacity_used: Optional[float] = None  # mAh
+
+    groundspeed: Optional[float] = None    # m/s
 
     rssi: Optional[int] = None             # dBm
     link_quality: Optional[int] = None     # LQ percent, 0-100
     snr: Optional[float] = None            # dB
     tx_power: Optional[int] = None         # mW
+
+    vario: Optional[float] = None          # m/s, positive = climbing
+    baro_altitude: Optional[float] = None  # meters, barometric (vs. GPS alt)
+    rpm: Optional[int] = None              # first reported motor/rotor RPM
+    temperature: Optional[float] = None    # degC, first reported sensor
+    cell_voltages: Optional[List[float]] = None  # volts, one per cell
 
     connected: bool = False
     source: str = ""                       # 'mavlink' | 'crsf' | 'demo'

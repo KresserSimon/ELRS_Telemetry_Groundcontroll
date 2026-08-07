@@ -12,7 +12,9 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt6.QtWidgets import QWidget
 
-PANEL_SIZE = 130
+BASE_PANEL_SIZE = 130
+MIN_SCALE = 0.5
+MAX_SCALE = 2.5
 MARGIN = 9
 PX_PER_DEGREE = 2.6
 
@@ -29,11 +31,21 @@ PANEL_BG = QColor(18, 22, 28, 235)
 class HorizonWidget(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setFixedSize(PANEL_SIZE, PANEL_SIZE)
+        self._scale = 1.0
+        self.setFixedSize(BASE_PANEL_SIZE, BASE_PANEL_SIZE)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self._roll: Optional[float] = None
         self._pitch: Optional[float] = None
         self._drag_start = None
+
+    def set_scale(self, scale: float) -> None:
+        self._scale = max(MIN_SCALE, min(MAX_SCALE, scale))
+        size = round(BASE_PANEL_SIZE * self._scale)
+        self.setFixedSize(size, size)
+        self.update()
+
+    def scale(self) -> float:
+        return self._scale
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -91,9 +103,11 @@ class HorizonWidget(QWidget):
         clip.addEllipse(QPointF(cx, cy), radius, radius)
         painter.setClipPath(clip)
 
+        px_per_degree = PX_PER_DEGREE * self._scale
+
         painter.translate(cx, cy)
         painter.rotate(-roll)
-        pitch_offset = pitch * PX_PER_DEGREE
+        pitch_offset = pitch * px_per_degree
 
         big = radius * 3
         painter.setPen(Qt.PenStyle.NoPen)
@@ -107,12 +121,12 @@ class HorizonWidget(QWidget):
 
         painter.setPen(QPen(MARK_COLOR, 1.1))
         font = painter.font()
-        font.setPointSize(6)
+        font.setPointSize(max(5, round(6 * self._scale)))
         painter.setFont(font)
         for deg in range(-30, 31, 10):
             if deg == 0:
                 continue
-            y = pitch_offset - deg * PX_PER_DEGREE
+            y = pitch_offset - deg * px_per_degree
             half_w = 13 if deg % 20 == 0 else 7
             painter.drawLine(QPointF(-half_w, y), QPointF(half_w, y))
             painter.drawText(QPointF(half_w + 2, y + 3), str(abs(deg)))

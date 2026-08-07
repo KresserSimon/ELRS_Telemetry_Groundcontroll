@@ -1,10 +1,13 @@
-"""Minimal CRSF (Crossfire/ExpressLRS) telemetry frame parser.
+"""CRSF (Crossfire) telemetry frame parser.
 
-Used when a bridge (e.g. an ESP32 "backpack") forwards the raw CRSF byte
-stream over UDP instead of translating it to MAVLink first. Only the frame
-types relevant to a ground-station dashboard are decoded; everything else is
-skipped. Field layouts/offsets below come from the CRSF protocol spec and are
-not self-explanatory from the code alone, hence the inline notes.
+CRSF was originally TBS's (Team BlackSheep) Crossfire protocol; ExpressLRS
+deliberately reuses the same wire format, so this parser reads telemetry
+from either. Used when a bridge (e.g. an ESP32 "backpack") forwards the raw
+CRSF byte stream over UDP/USB instead of translating it to MAVLink first.
+GPS/battery/link/attitude plus the extended sensor frames (vario, baro
+altitude, RPM, temperature, per-cell voltages) are decoded; everything else
+is skipped. Field layouts/offsets below come from the CRSF protocol spec and
+are not self-explanatory from the code alone, hence the inline notes.
 """
 from __future__ import annotations
 
@@ -14,7 +17,12 @@ from typing import Dict, List, Optional
 
 CRSF_SYNC_BYTE = 0xC8
 FRAMETYPE_GPS = 0x02
+FRAMETYPE_VARIO = 0x07
 FRAMETYPE_BATTERY_SENSOR = 0x08
+FRAMETYPE_BARO_ALTITUDE = 0x09
+FRAMETYPE_RPM = 0x0C
+FRAMETYPE_TEMP = 0x0D
+FRAMETYPE_CELLS = 0x0E
 FRAMETYPE_LINK_STATISTICS = 0x14
 FRAMETYPE_ATTITUDE = 0x1E
 FRAMETYPE_FLIGHT_MODE = 0x21
@@ -98,6 +106,16 @@ class CRSFParser:
                 return self._parse_link_stats(payload)
             if frame_type == FRAMETYPE_ATTITUDE and len(payload) == 6:
                 return self._parse_attitude(payload)
+            if frame_type == FRAMETYPE_VARIO and len(payload) == 2:
+                return self._parse_vario(payload)
+            if frame_type == FRAMETYPE_BARO_ALTITUDE and len(payload) == 3:
+                return self._parse_baro_altitude(payload)
+            if frame_type == FRAMETYPE_RPM:
+                return self._parse_rpm(payload)
+            if frame_type == FRAMETYPE_TEMP:
+                return self._parse_temp(payload)
+            if frame_type == FRAMETYPE_CELLS:
+                return self._parse_cells(payload)
             if frame_type == FRAMETYPE_FLIGHT_MODE:
                 return self._parse_flight_mode(payload)
         except struct.error:
@@ -114,6 +132,7 @@ class CRSFParser:
             "alt": altitude - 1000.0,      # CRSF encodes altitude with +1000m offset
             "heading": heading / 100.0,
             "satellites": satellites,
+            "groundspeed": groundspeed / 100.0 / 3.6,  # km/h*100 -> m/s
         }
 
     @staticmethod
@@ -125,11 +144,57 @@ class CRSFParser:
         }
 
     @staticmethod
+    def _parse_vario(payload: bytes) -> Dict:
+        (v_speed,) = struct.unpack(">h", payload)  # cm/s
+        return {"vario": v_speed / 100.0}
+
+    @staticmethod
+    def _parse_baro_altitude(payload: bytes) -> Dict:
+        (raw,) = struct.unpack(">H", payload[0:2])
+        # bit15 set -> value is metres directly; clear -> decimetres with a
+        # -10000dm offset (spans -1000m..+2276.7m). The trailing signed byte
+        # is a logarithmically-encoded vertical speed we don't decode here -
+        # FRAMETYPE_VARIO already gives vertical speed via a plain int16.
+        if raw & 0x8000:
+            alt_m = float(raw & 0x7FFF)
+        else:
+            alt_m = ((raw & 0x7FFF) - 10000) / 10.0
+        return {"baro_altitude": alt_m}
+
+    @staticmethod
+    def _parse_rpm(payload: bytes) -> Optional[Dict]:
+        if len(payload) < 4:
+            return None
+        first = int.from_bytes(payload[1:4], "big", signed=True)
+        return {"rpm": first}
+
+    @staticmethod
+    def _parse_temp(payload: bytes) -> Optional[Dict]:
+        if len(payload) < 3:
+            return None
+        (first,) = struct.unpack(">h", payload[1:3])  # deci-degrees C
+        return {"temperature": first / 10.0}
+
+    @staticmethod
+    def _parse_cells(payload: bytes) -> Optional[Dict]:
+        if len(payload) < 3:
+            return None
+        count = (len(payload) - 1) // 2
+        values = [
+            struct.unpack(">H", payload[1 + 2 * i : 3 + 2 * i])[0] / 1000.0
+            for i in range(count)
+        ]
+        return {"cell_voltages": values}
+
+    @staticmethod
     def _parse_battery(payload: bytes) -> Dict:
         voltage, current = struct.unpack(">HH", payload[0:4])
+        capacity_used = int.from_bytes(payload[4:7], "big", signed=False)
         remaining = payload[7]
         return {
             "battery_voltage": voltage / 10.0,
+            "battery_current": current / 10.0,
+            "battery_capacity_used": float(capacity_used),
             "battery_remaining": remaining,
         }
 

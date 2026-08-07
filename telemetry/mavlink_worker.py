@@ -135,8 +135,13 @@ class MAVLinkWorker(TelemetryWorker):
             voltages = [v for v in msg.voltages if v not in (0, 65535)]
             if voltages:
                 s.battery_voltage = sum(voltages) / 1000.0
+                s.cell_voltages = [v / 1000.0 for v in voltages]
             if msg.battery_remaining >= 0:
                 s.battery_remaining = msg.battery_remaining
+            if msg.current_battery != -1:
+                s.battery_current = msg.current_battery / 100.0
+            if msg.current_consumed != -1:
+                s.battery_capacity_used = float(msg.current_consumed)
 
         elif msg_type in ("RADIO_STATUS", "RADIO"):
             if msg.rssi != 255:
@@ -145,3 +150,7 @@ class MAVLinkWorker(TelemetryWorker):
         elif msg_type == "RC_CHANNELS":
             if getattr(msg, "rssi", 255) != 255:
                 s.link_quality = round(msg.rssi / 255 * 100)
+
+        elif msg_type == "VFR_HUD":
+            s.vario = msg.climb
+            s.groundspeed = msg.groundspeed

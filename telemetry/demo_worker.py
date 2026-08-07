@@ -18,6 +18,8 @@ LOOP_PERIOD_S = 60.0        # time for one full circle
 BATTERY_DRAIN_PERIOD_S = 150.0  # time to drain 100% -> 0%, then it "swaps" and resets
 RADIUS_M = 250.0
 FLIGHT_MODES = ["STABILIZE", "LOITER", "AUTO", "RTL"]
+PACK_CAPACITY_MAH = 4000.0
+CRUISE_SPEED_MPS = 2 * math.pi * RADIUS_M / LOOP_PERIOD_S
 
 
 class DemoWorker(TelemetryWorker):
@@ -65,11 +67,21 @@ class DemoWorker(TelemetryWorker):
             drain_progress = (t % BATTERY_DRAIN_PERIOD_S) / BATTERY_DRAIN_PERIOD_S
             s.battery_voltage = round(max_voltage - drain_progress * (max_voltage - min_voltage), 2)
             s.battery_remaining = round((1.0 - drain_progress) * 100)
+            per_cell = s.battery_voltage / self._cells
+            s.cell_voltages = [round(per_cell + random.uniform(-0.02, 0.02), 3) for _ in range(self._cells)]
+            s.battery_current = round(15.0 + random.uniform(-2.0, 2.0), 1)
+            s.battery_capacity_used = round(drain_progress * PACK_CAPACITY_MAH)
 
             s.link_quality = max(0, min(100, 95 - int(15 * abs(math.sin(angle))) + random.randint(-3, 3)))
             s.rssi = -40 - int(20 * abs(math.sin(angle))) + random.randint(-2, 2)
             s.snr = round(8 + random.uniform(-1, 1), 1)
             s.tx_power = 100
+
+            s.vario = round(1.5 * math.cos(angle * 2) + random.uniform(-0.1, 0.1), 2)
+            s.baro_altitude = round(s.alt + random.uniform(-1.0, 1.0), 1)
+            s.rpm = 6500 + random.randint(-100, 100)
+            s.temperature = round(35.0 + random.uniform(-1.0, 1.0), 1)
+            s.groundspeed = round(CRUISE_SPEED_MPS + random.uniform(-0.5, 0.5), 1)
 
             s.connected = True
             s.source = "demo"

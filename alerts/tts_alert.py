@@ -7,6 +7,7 @@ once inside run() and reused for every subsequent phrase.
 from __future__ import annotations
 
 import queue
+from typing import Optional
 
 from PyQt6.QtCore import QThread
 
@@ -18,6 +19,14 @@ LEVEL_LOW = "low"
 LEVEL_CRITICAL = "critical"
 
 REANNOUNCE_INTERVAL_S = 30.0
+
+# Per-cell warning/critical voltage defaults by chemistry - LiPo tolerates
+# much less deep discharge than Li-Ion before cell damage/rapid voltage
+# collapse, so a single shared threshold pair is wrong for one of the two.
+CHEMISTRY_DEFAULTS = {
+    "lipo": (3.6, 3.5),
+    "liion": (3.3, 3.0),
+}
 
 
 class TTSWorker(QThread):
@@ -81,6 +90,23 @@ class BatteryAlertMonitor:
         self._level = LEVEL_NONE
         self._last_announce = 0.0
 
+    def configure(
+        self,
+        cells: int,
+        low_cell_voltage: float,
+        critical_cell_voltage: float,
+        low_percent: Optional[int] = None,
+        critical_percent: Optional[int] = None,
+    ) -> None:
+        self._cells = max(cells, 1)
+        self._low_cell_voltage = low_cell_voltage
+        self._critical_cell_voltage = critical_cell_voltage
+        if low_percent is not None:
+            self._low_percent = low_percent
+        if critical_percent is not None:
+            self._critical_percent = critical_percent
+        self._level = LEVEL_NONE  # re-evaluate cleanly against the new thresholds
+
     def check(self, state: TelemetryState) -> None:
         level = self._evaluate_level(state)
         now = state.timestamp
@@ -100,6 +126,17 @@ class BatteryAlertMonitor:
             self._tts.say(self._message(level))
 
     def _evaluate_level(self, state: TelemetryState) -> str:
+        # A real weakest-cell reading is more accurate than percent-remaining
+        # or an averaged-pack-voltage estimate, since one weak cell is what
+        # actually determines when a LiPo needs to land.
+        if state.cell_voltages:
+            min_cell = min(state.cell_voltages)
+            if min_cell <= self._critical_cell_voltage:
+                return LEVEL_CRITICAL
+            if min_cell <= self._low_cell_voltage:
+                return LEVEL_LOW
+            return LEVEL_NONE
+
         percent = state.battery_remaining
         per_cell = state.battery_voltage / self._cells if state.battery_voltage else None
 
