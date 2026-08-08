@@ -37,8 +37,10 @@ from ui.dashboard import Dashboard
 from ui.dashboard_settings_dialog import DashboardSettingsDialog
 from ui.flight_log_dialog import FlightLogSettingsDialog
 from ui.horizon_widget import HorizonWidget
+from ui.map_buttons import HeadingModeButton, LockButton
 from ui.map_widget import MapWidget
 from ui.route_editor_overlay import RouteEditorOverlay
+from ui.track_overlay import TrackOverlay
 
 HEARTBEAT_TIMEOUT_S = 3.0
 
@@ -99,6 +101,20 @@ class MainWindow(QMainWindow):
         self._route_overlay.waypoints_edited.connect(self._route_manager.set_all)
         self._map.add_overlay(self._route_overlay, "bottom-left")
 
+        self._track_recording = False
+        self._track_overlay = TrackOverlay()
+        self._track_overlay.start_pause_clicked.connect(self._toggle_track_recording)
+        self._track_overlay.export_clicked.connect(self._export_track_prompt)
+        self._map.add_overlay(self._track_overlay, "top-left")
+
+        self._heading_up = False
+        self._lock_button = LockButton()
+        self._lock_button.clicked.connect(self._toggle_map_lock)
+        self._map.add_overlay(self._lock_button, "bottom-right")
+        self._heading_button = HeadingModeButton()
+        self._heading_button.clicked.connect(self._toggle_heading_mode)
+        self._map.add_overlay(self._heading_button, "bottom-right")
+
         self._nfz_manager = NoFlyZoneManager()
         self._nfz_manager.changed.connect(self._on_nfz_changed)
 
@@ -130,6 +146,13 @@ class MainWindow(QMainWindow):
         self._i18n_actions: list[tuple] = []
         self._build_menu()
         i18n.on_language_changed(self._retranslate_menu)
+
+        # The menu action's toggled signal is connected above, but that
+        # connection postdates its own initial setChecked(True) - sync the
+        # button's display explicitly so it doesn't start out looking
+        # unlocked while auto-center is actually on.
+        self._lock_button.set_locked(self._auto_center_action.isChecked())
+        self._heading_button.set_heading_up(self._heading_up)
 
         self._last_telemetry_time = 0.0
         self._has_fix = False
@@ -256,6 +279,7 @@ class MainWindow(QMainWindow):
         self._auto_center_action.setCheckable(True)
         self._auto_center_action.setChecked(True)
         self._auto_center_action.toggled.connect(self._map.set_auto_center)
+        self._auto_center_action.toggled.connect(self._lock_button.set_locked)
 
         jump_action = view_menu.addAction("")
         self._i18n_actions.append((jump_action, "menu_view_jump"))
@@ -382,6 +406,8 @@ class MainWindow(QMainWindow):
         self._has_fix = False
         self._map.clear_path()
         self._track_recorder.clear()
+        self._track_recording = False
+        self._track_overlay.set_state(False, 0)
         self._dashboard.reset_session()
 
         if demo:
@@ -409,6 +435,9 @@ class MainWindow(QMainWindow):
             self._stop_worker()
             self._dashboard.reset_session()
             self._map.clear_path()
+            self._track_recorder.clear()
+            self._track_recording = False
+            self._track_overlay.set_state(False, 0)
             # Nothing is flying, and the whole point of Plan Mode is to pan
             # freely while placing waypoints - so release the follow-the-drone
             # lock rather than leaving it fighting the user's own panning.
@@ -422,6 +451,18 @@ class MainWindow(QMainWindow):
         self._auto_center_action.blockSignals(True)
         self._auto_center_action.setChecked(checked)
         self._auto_center_action.blockSignals(False)
+        # blockSignals() above means the lock button's toggled-signal sync
+        # doesn't fire either - update it explicitly so it doesn't show
+        # "locked" while auto-center was just silently switched off.
+        self._lock_button.set_locked(checked)
+
+    def _toggle_map_lock(self) -> None:
+        self._auto_center_action.setChecked(not self._auto_center_action.isChecked())
+
+    def _toggle_heading_mode(self) -> None:
+        self._heading_up = not self._heading_up
+        self._map.set_heading_mode(self._heading_up)
+        self._heading_button.set_heading_up(self._heading_up)
 
     def _apply_connection_values(self, values: dict) -> None:
         self._args.protocol = values["protocol"]
@@ -535,7 +576,9 @@ class MainWindow(QMainWindow):
 
         if state.has_gps_fix():
             self._map.update_position(state.lat, state.lon, state.heading)
-            self._track_recorder.add_point(state)
+            if self._track_recording:
+                self._track_recorder.add_point(state)
+                self._track_overlay.update_count(len(self._track_recorder))
             self._has_fix = True
 
         self._battery_monitor.check(state)
@@ -626,6 +669,36 @@ class MainWindow(QMainWindow):
         self._nfz_manager.set_all(zones)
         self.statusBar().showMessage(i18n.tr("status_nfz_imported", count=len(zones)), 5000)
 
+    # --------------------------------------------------------------- track
+
+    def _toggle_track_recording(self) -> None:
+        self._track_recording = not self._track_recording
+        self._track_overlay.set_state(self._track_recording, len(self._track_recorder))
+        key = "status_track_recording_started" if self._track_recording else "status_track_recording_paused"
+        self.statusBar().showMessage(i18n.tr(key), 3000)
+
+    def _export_track_prompt(self) -> None:
+        if len(self._track_recorder) == 0:
+            QMessageBox.warning(self, i18n.tr("msgbox_no_track_title"), i18n.tr("msgbox_no_track_body"))
+            return
+
+        box = QMessageBox(self)
+        box.setWindowTitle(i18n.tr("track_export_format_title"))
+        box.setText(i18n.tr("track_export_format_question"))
+        gpx_btn = box.addButton(i18n.tr("track_export_format_gpx"), QMessageBox.ButtonRole.ActionRole)
+        kml_btn = box.addButton(i18n.tr("track_export_format_kml"), QMessageBox.ButtonRole.ActionRole)
+        csv_btn = box.addButton(i18n.tr("track_export_format_csv"), QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked is gpx_btn:
+            self._export_track("gpx")
+        elif clicked is kml_btn:
+            self._export_track("kml")
+        elif clicked is csv_btn:
+            self._export_track("csv")
+
     # ------------------------------------------------------------- export
 
     def _export_track(self, fmt: str) -> None:
@@ -633,7 +706,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, i18n.tr("msgbox_no_track_title"), i18n.tr("msgbox_no_track_body"))
             return
 
-        filter_str = i18n.tr("export_gpx_filter" if fmt == "gpx" else "export_kml_filter")
+        filter_keys = {"gpx": "export_gpx_filter", "kml": "export_kml_filter", "csv": "route_csv_filter"}
+        filter_str = i18n.tr(filter_keys[fmt])
         default_name = f"flight_{time.strftime('%Y%m%d_%H%M%S')}.{fmt}"
         path, _ = QFileDialog.getSaveFileName(self, i18n.tr("export_dialog_title"), default_name, filter_str)
         if not path:
@@ -642,8 +716,10 @@ class MainWindow(QMainWindow):
         try:
             if fmt == "gpx":
                 self._track_recorder.export_gpx(path)
-            else:
+            elif fmt == "kml":
                 self._track_recorder.export_kml(path)
+            else:
+                self._track_recorder.export_csv(path)
         except OSError as exc:
             QMessageBox.critical(self, i18n.tr("msgbox_export_failed_title"), str(exc))
             return

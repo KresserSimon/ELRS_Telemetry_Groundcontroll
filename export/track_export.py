@@ -1,6 +1,7 @@
-"""Records the flown GPS track and exports it to GPX 1.1 or KML 2.2."""
+"""Records the flown GPS track and exports it to GPX 1.1, KML 2.2, or CSV."""
 from __future__ import annotations
 
+import csv
 import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -75,6 +76,18 @@ class TrackRecorder:
         ET.SubElement(linestring, "coordinates").text = coords
 
         self._write_pretty(kml, path)
+
+    def export_csv(self, path: str) -> None:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["timestamp", "lat", "lon", "alt"])
+            for p in self._points:
+                writer.writerow([
+                    self._iso_time(p.timestamp),
+                    f"{p.lat:.7f}",
+                    f"{p.lon:.7f}",
+                    f"{p.alt:.1f}" if p.alt is not None else "",
+                ])
 
     @staticmethod
     def _iso_time(ts: float) -> str:

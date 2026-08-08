@@ -1,10 +1,10 @@
 """Self-contained Leaflet/OSM HTML page loaded once into QWebEngineView.
 
 All live updates afterwards go through small JS function calls
-(updateDrone / setAutoCenter / clearPath / setVehicleType / jumpToDrone /
-setRoute / setRouteMode) via runJavaScript(), so the map never reloads and
-the marker moves smoothly. Route-drawing clicks travel the other way (JS ->
-Python) over a QWebChannel bridge registered as `routeBridge`.
+(updateDrone / setAutoCenter / setHeadingMode / clearPath / setVehicleType /
+jumpToDrone / setRoute / setRouteMode) via runJavaScript(), so the map never
+reloads and the marker moves smoothly. Route-drawing clicks travel the other
+way (JS -> Python) over a QWebChannel bridge registered as `routeBridge`.
 """
 
 MAP_HTML_TEMPLATE = """<!DOCTYPE html>
@@ -132,8 +132,53 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     var el = droneMarker.getElement();
     if (el) {
       var svg = el.querySelector('svg');
+      // In heading-up mode the whole map container is rotated by
+      // -lastHeading (see setMapRotation), so the icon's own +lastHeading
+      // rotation cancels that out and it ends up pointing straight up -
+      // no heading-up-specific case needed here.
       if (svg) { svg.style.transform = 'rotate(' + lastHeading + 'deg)'; }
     }
+  }
+
+  // ------------------------------------------------------- map orientation
+  //
+  // North-up (default) leaves the map container untransformed and only
+  // rotates the drone icon (above). Heading-up instead rotates the whole
+  // map container so the drone's current heading always points to the
+  // screen's top edge, like a car GPS's "track up" mode.
+
+  var headingUp = false;
+  var mapRotationDeg = 0;
+
+  function setMapRotation(deg) {
+    mapRotationDeg = deg || 0;
+    var container = map.getContainer();
+    container.style.transformOrigin = '50% 50%';
+    container.style.transform = mapRotationDeg ? ('rotate(' + (-mapRotationDeg) + 'deg)') : '';
+  }
+
+  function setHeadingMode(enabled) {
+    headingUp = enabled;
+    setMapRotation(enabled ? (lastHeading || 0) : 0);
+  }
+
+  // Converts a raw browser mouse position back to the geographic point
+  // visually under the cursor, undoing the container's CSS rotation - the
+  // rotation is paint-only, so Leaflet's own (unrotated) hit-testing would
+  // otherwise place waypoints/NFZ clicks at the wrong spot whenever the map
+  // is visually rotated (see map.on('click'...) / ('contextmenu'...) below).
+  function screenPointToLatLng(clientX, clientY) {
+    var rect = map.getContainer().getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var dx = clientX - cx;
+    var dy = clientY - cy;
+    var theta = mapRotationDeg * Math.PI / 180;
+    var rdx = dx * Math.cos(theta) - dy * Math.sin(theta);
+    var rdy = dx * Math.sin(theta) + dy * Math.cos(theta);
+    var size = map.getSize();
+    var localPoint = L.point(size.x / 2 + rdx, size.y / 2 + rdy);
+    return map.containerPointToLatLng(localPoint);
   }
 
   function updateDrone(lat, lon, heading) {
@@ -151,6 +196,9 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
       lastHeading = heading;
     }
     applyRotation();
+    if (headingUp) {
+      setMapRotation(lastHeading || 0);
+    }
 
     if (!hasCentered) {
       homeMarker = L.marker(latlng, { icon: homeIcon, zIndexOffset: -100 }).addTo(map);
@@ -262,7 +310,10 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
   map.on('click', function (e) {
     if (routeMode && routeBridge) {
-      routeBridge.waypoint_clicked(e.latlng.lat, e.latlng.lng);
+      // e.latlng is only correct when the map isn't visually rotated - see
+      // screenPointToLatLng() for why.
+      var ll = mapRotationDeg ? screenPointToLatLng(e.originalEvent.clientX, e.originalEvent.clientY) : e.latlng;
+      routeBridge.waypoint_clicked(ll.lat, ll.lng);
     }
   });
 
@@ -283,10 +334,14 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
   map.on('contextmenu', function (e) {
     L.DomEvent.preventDefault(e);
-    contextMenuLatLng = e.latlng;
-    var point = map.latLngToContainerPoint(e.latlng);
-    contextMenuEl.style.left = point.x + 'px';
-    contextMenuEl.style.top = point.y + 'px';
+    var oe = e.originalEvent;
+    contextMenuLatLng = mapRotationDeg ? screenPointToLatLng(oe.clientX, oe.clientY) : e.latlng;
+    // Placed from raw client coordinates rather than map.latLngToContainerPoint()
+    // (which is unrotated map-space) - #map and this menu are body siblings
+    // with no positioned ancestor between them, so client coordinates already
+    // match the menu's own absolute-positioning frame, rotated or not.
+    contextMenuEl.style.left = oe.clientX + 'px';
+    contextMenuEl.style.top = oe.clientY + 'px';
     contextMenuEl.style.display = 'block';
   });
 

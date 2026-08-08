@@ -64,6 +64,11 @@ class MapWidget(QWebEngineView):
         self._reposition_overlays()
 
     def _reposition_overlays(self) -> None:
+        # Overlays sharing a fixed corner (e.g. the lock + heading-mode
+        # buttons both in bottom-right) stack outward from that corner in
+        # the order they were added, instead of all landing on top of
+        # each other - single-occupant corners keep their exact old offset.
+        stack_offset: dict = {}
         for widget, corner in self._overlays:
             w, h = widget.width(), widget.height()
             if corner is None:
@@ -72,14 +77,20 @@ class MapWidget(QWebEngineView):
                 max_y = max(OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN)
                 x = min(max(widget.x(), OVERLAY_MARGIN), max_x)
                 y = min(max(widget.y(), OVERLAY_MARGIN), max_y)
-            elif corner == "top-left":
-                x, y = OVERLAY_MARGIN, OVERLAY_MARGIN
+                widget.move(x, y)
+                widget.raise_()
+                continue
+
+            offset = stack_offset.get(corner, 0)
+            if corner == "top-left":
+                x, y = OVERLAY_MARGIN, OVERLAY_MARGIN + offset
             elif corner == "bottom-left":
-                x, y = OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN
+                x, y = OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN - offset
             elif corner == "bottom-right":
-                x, y = self.width() - w - OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN
+                x, y = self.width() - w - OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN - offset
             else:  # top-right
-                x, y = self.width() - w - OVERLAY_MARGIN, OVERLAY_MARGIN
+                x, y = self.width() - w - OVERLAY_MARGIN, OVERLAY_MARGIN + offset
+            stack_offset[corner] = offset + h + OVERLAY_MARGIN
             widget.move(x, y)
             widget.raise_()
 
@@ -90,6 +101,9 @@ class MapWidget(QWebEngineView):
     def set_auto_center(self, enabled: bool) -> None:
         self._auto_center = enabled
         self.page().runJavaScript(f"setAutoCenter({'true' if enabled else 'false'});")
+
+    def set_heading_mode(self, heading_up: bool) -> None:
+        self.page().runJavaScript(f"setHeadingMode({'true' if heading_up else 'false'});")
 
     def clear_path(self) -> None:
         self.page().runJavaScript("clearPath();")
