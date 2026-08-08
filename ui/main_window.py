@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 
 from alerts.tts_alert import BatteryAlertMonitor, TTSWorker
 from core import i18n
-from core.dashboard_config import save_visible_fields
+from core.dashboard_config import save_dashboard_layout, save_visible_fields
 from core.home_config import load_home_position, save_home_position
 from core.nfz import NoFlyZoneManager
 from core.route import RouteManager
@@ -279,9 +279,9 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((home_settings_action, "menu_home_settings"))
         home_settings_action.triggered.connect(self._open_home_settings)
 
-        dashboard_settings_action = settings_menu.addAction("")
-        self._i18n_actions.append((dashboard_settings_action, "menu_dashboard_settings"))
-        dashboard_settings_action.triggered.connect(self._open_dashboard_settings)
+        self._dashboard_settings_action = settings_menu.addAction("")
+        self._i18n_actions.append((self._dashboard_settings_action, "menu_dashboard_settings"))
+        self._dashboard_settings_action.triggered.connect(self._open_dashboard_settings)
         settings_menu.addSeparator()
 
         view_menu = settings_menu.addMenu("")
@@ -297,6 +297,10 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((jump_action, "menu_view_jump"))
         jump_action.setShortcut("Ctrl+Home")
         jump_action.triggered.connect(self._map.center_on_current)
+
+        # Same QAction instance as under Einstellungen - one place to open
+        # the dialog, reachable from both menus.
+        view_menu.addAction(self._dashboard_settings_action)
 
         # Same QAction instance as in the Route menu - toggling it from
         # either place (or from the map's right-click view-options submenu)
@@ -614,13 +618,24 @@ class MainWindow(QMainWindow):
         self._map.reposition_overlays()
 
     def _open_dashboard_settings(self) -> None:
-        dialog = DashboardSettingsDialog(self._dashboard.field_catalog(), self._dashboard.visible_fields(), self)
+        dialog = DashboardSettingsDialog(
+            self._dashboard.field_catalog(),
+            self._dashboard.visible_fields(),
+            self._dashboard.group_order(),
+            self._dashboard.rows(),
+            self,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
         keys = dialog.visible_fields()
         self._dashboard.apply_field_visibility(keys)
         save_visible_fields(keys)
+
+        group_order = dialog.group_order()
+        rows = dialog.rows()
+        self._dashboard.apply_layout(group_order, rows)
+        save_dashboard_layout(group_order, rows)
 
     def _open_flight_log_settings(self) -> None:
         dialog = FlightLogSettingsDialog(self._log_fields, self._log_interval, self)

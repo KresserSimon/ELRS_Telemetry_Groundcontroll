@@ -1,5 +1,6 @@
 """Telemetry dashboard bar: GPS / link quality / battery / sensors /
-long-range / connection status. Which individual fields are shown is
+long-range / connection status. Which individual fields are shown, the
+order the groups appear in, and how many rows they wrap across are all
 user-configurable (see DashboardSettingsDialog) and persisted as their
 preferred default layout via core.dashboard_config.
 """
@@ -7,20 +8,56 @@ from __future__ import annotations
 
 import math
 import time
+from typing import Dict, List
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QGroupBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from core import geo, i18n
-from core.dashboard_config import load_visible_fields
+from core.dashboard_config import load_dashboard_layout, load_visible_fields
 from core.telemetry_state import TelemetryState
 from ui import icons
 
 _NA = "--"
 
+# Glass-cockpit palette - matches the dark panel look the map overlays
+# already use, with a cyan "avionics" accent instead of a plain OS theme.
+PANEL_BG = "#0a0e13"
+GROUP_BG = "#111820"
+GROUP_BORDER = "#243040"
+ACCENT = "#3ddbc9"
+VALUE_COLOR = "#e8fffa"
+CAPTION_COLOR = "#7891a3"
+CONNECTED_COLOR = "#39d98a"
+DISCONNECTED_COLOR = "#ff5f56"
+_MONO_FONT = "'Consolas', 'Courier New', monospace"
+
+_GROUP_QSS = f"""
+    QGroupBox {{
+        background-color: {GROUP_BG};
+        border: 1px solid {GROUP_BORDER};
+        border-top: 2px solid {ACCENT};
+        border-radius: 4px;
+        margin-top: 12px;
+        padding: 8px 6px 4px 6px;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        left: 8px;
+        top: -2px;
+        padding: 0 5px;
+        color: {ACCENT};
+        font-size: 9px;
+        font-weight: 700;
+        background-color: {PANEL_BG};
+    }}
+"""
+
 
 def _value_label() -> QLabel:
     lbl = QLabel(_NA)
-    lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
+    lbl.setStyleSheet(f"color: {VALUE_COLOR}; font-family: {_MONO_FONT}; font-weight: 700; font-size: 14px;")
     return lbl
 
 
@@ -39,7 +76,7 @@ class _Field(QWidget):
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(0)
         self.caption_label = QLabel(i18n.tr(caption_key))
-        self.caption_label.setStyleSheet("color: #9aa4b2; font-size: 10px;")
+        self.caption_label.setStyleSheet(f"color: {CAPTION_COLOR}; font-size: 9px; font-weight: 600;")
         self.value = _value_label()
         layout.addWidget(self.caption_label)
         layout.addWidget(self.value)
@@ -51,39 +88,45 @@ class _Field(QWidget):
         self.caption_label.setText(i18n.tr(self.caption_key))
 
 
+DEFAULT_ROWS = 1
+MAX_ROWS = 4
+
+
 class Dashboard(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"Dashboard {{ background-color: {PANEL_BG}; }}" + _GROUP_QSS)
         self._fields: list[_Field] = []
-        self._group_boxes: list[tuple[QGroupBox, str]] = []
+        self._boxes_by_key: Dict[str, QGroupBox] = {}
         self._fields_by_box: dict = {}
         self._connected = False
         self._visible_fields: set = set()
+        self._group_order: List[str] = []
+        self._rows = DEFAULT_ROWS
 
         self._home = None       # (lat, lon) of the first GPS fix this session
         self._flight_start = None  # time.monotonic() at that first fix
 
-        root = QHBoxLayout(self)
-        root.setContentsMargins(8, 6, 8, 6)
-        root.setSpacing(12)
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(8, 6, 8, 6)
+        self._outer.setSpacing(4)
 
         self.gps_lat = _Field("dash_lat")
         self.gps_lon = _Field("dash_lon")
         self.gps_alt = _Field("dash_alt")
         self.gps_sats = _Field("dash_sats")
-        root.addWidget(self._group("dash_gps", [self.gps_lat, self.gps_lon, self.gps_alt, self.gps_sats],
-                                    icons.gps_icon()))
+        self._group("dash_gps", [self.gps_lat, self.gps_lon, self.gps_alt, self.gps_sats], icons.gps_icon())
 
         self.mode = _Field("dash_flight_mode")
-        root.addWidget(self._group("dash_status", [self.mode], icons.drone_icon()))
+        self._group("dash_status", [self.mode], icons.drone_icon())
 
         self.rssi = _Field("dash_rssi")
         self.lq = _Field("dash_lq")
         self.snr = _Field("dash_snr")
         self.tx_power = _Field("dash_tx_power")
         self.link_icon_label = _icon_label(icons.signal_icon(-1))
-        root.addWidget(self._group("dash_link", [self.rssi, self.lq, self.snr, self.tx_power],
-                                    icon_label=self.link_icon_label))
+        self._group("dash_link", [self.rssi, self.lq, self.snr, self.tx_power], icon_label=self.link_icon_label)
 
         self.voltage = _Field("dash_voltage")
         self.remaining = _Field("dash_remaining")
@@ -91,32 +134,30 @@ class Dashboard(QWidget):
         self.battery_current = _Field("dash_battery_current")
         self.battery_capacity_used = _Field("dash_battery_capacity_used")
         self.battery_icon_label = _icon_label(icons.battery_icon(None))
-        root.addWidget(self._group(
+        self._group(
             "dash_battery",
             [self.voltage, self.remaining, self.min_cell, self.battery_current, self.battery_capacity_used],
             icon_label=self.battery_icon_label,
-        ))
+        )
 
         self.vario = _Field("dash_vario")
         self.baro_alt = _Field("dash_baro_alt")
         self.rpm = _Field("dash_rpm")
         self.temperature = _Field("dash_temperature")
-        root.addWidget(self._group("dash_sensors", [self.vario, self.baro_alt, self.rpm, self.temperature],
-                                    icons.sensor_icon()))
+        self._group("dash_sensors", [self.vario, self.baro_alt, self.rpm, self.temperature], icons.sensor_icon())
 
         self.groundspeed = _Field("dash_groundspeed")
         self.distance_home = _Field("dash_distance_home")
         self.bearing_home = _Field("dash_bearing_home")
         self.flight_timer = _Field("dash_flight_timer")
-        root.addWidget(self._group(
+        self._group(
             "dash_longrange",
             [self.groundspeed, self.distance_home, self.bearing_home, self.flight_timer],
             icons.compass_icon(),
-        ))
+        )
 
         self.conn_icon_label = _icon_label(icons.status_led_icon(False))
         self.conn_text = QLabel()
-        self.conn_text.setStyleSheet("font-weight: 600; font-size: 13px;")
         conn_row = QHBoxLayout()
         conn_row.setSpacing(6)
         conn_row.addWidget(self.conn_icon_label)
@@ -127,11 +168,17 @@ class Dashboard(QWidget):
         conn_box.addWidget(conn_wrap)
         conn_group = QGroupBox()
         conn_group.setLayout(conn_box)
-        self._group_boxes.append((conn_group, "dash_connection"))
-        root.addWidget(conn_group)
+        self._boxes_by_key["dash_connection"] = conn_group
 
-        root.addStretch(1)
         self.set_connection_status(False)
+
+        saved_layout = load_dashboard_layout()
+        if saved_layout is not None:
+            group_order, rows = saved_layout
+        else:
+            group_order, rows = list(self._boxes_by_key.keys()), DEFAULT_ROWS
+        self.apply_layout(group_order, rows)
+
         self.retranslate()
 
         saved = load_visible_fields()
@@ -141,7 +188,7 @@ class Dashboard(QWidget):
 
     def _group(self, title_key: str, fields: list, icon_pixmap=None, icon_label: QLabel = None) -> QGroupBox:
         box = QGroupBox()
-        self._group_boxes.append((box, title_key))
+        self._boxes_by_key[title_key] = box
         layout = QHBoxLayout(box)
         layout.setSpacing(10)
         if icon_label is None and icon_pixmap is not None:
@@ -157,11 +204,12 @@ class Dashboard(QWidget):
     # ------------------------------------------------------- configuration
 
     def field_catalog(self) -> list:
-        """[(group_title_key, [field_caption_key, ...]), ...] for the settings dialog."""
+        """[(group_title_key, [field_caption_key, ...]), ...] for the settings
+        dialog, in the dashboard's current display order."""
         return [
-            (title_key, [f.caption_key for f in self._fields_by_box.get(box, [])])
-            for box, title_key in self._group_boxes
-            if self._fields_by_box.get(box)
+            (key, [f.caption_key for f in self._fields_by_box.get(self._boxes_by_key[key], [])])
+            for key in self._group_order
+            if self._fields_by_box.get(self._boxes_by_key.get(key))
         ]
 
     def all_field_keys(self) -> set:
@@ -177,6 +225,42 @@ class Dashboard(QWidget):
         for box, fields in self._fields_by_box.items():
             box.setVisible(any(f.caption_key in self._visible_fields for f in fields))
 
+    def group_order(self) -> List[str]:
+        return list(self._group_order)
+
+    def rows(self) -> int:
+        return self._rows
+
+    def apply_layout(self, group_order: List[str], rows: int) -> None:
+        """Re-arrange the group boxes into `rows` rows, in `group_order` -
+        any group missing from a stale/incomplete saved order is appended at
+        the end rather than dropped, so newly added groups stay visible."""
+        ordered_keys = [k for k in group_order if k in self._boxes_by_key]
+        ordered_keys += [k for k in self._boxes_by_key if k not in ordered_keys]
+        self._group_order = ordered_keys
+        boxes = [self._boxes_by_key[k] for k in ordered_keys]
+
+        for box in boxes:
+            box.setParent(None)
+        while self._outer.count():
+            item = self._outer.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+        self._rows = max(1, min(rows, len(boxes) or 1))
+        chunk_size = max(1, math.ceil(len(boxes) / self._rows)) if boxes else 1
+        chunks = [boxes[i:i + chunk_size] for i in range(0, len(boxes), chunk_size)] or [[]]
+        for chunk in chunks:
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(12)
+            for box in chunk:
+                row_layout.addWidget(box)
+            row_layout.addStretch(1)
+            self._outer.addWidget(row_widget)
+
     # ------------------------------------------------------------- session
 
     def reset_session(self) -> None:
@@ -184,11 +268,11 @@ class Dashboard(QWidget):
         self._flight_start = None
 
     def retranslate(self) -> None:
-        for box, key in self._group_boxes:
+        for key, box in self._boxes_by_key.items():
             box.setTitle(i18n.tr(key))
         for field in self._fields:
             field.retranslate()
-        self.conn_text.setText(i18n.tr("dash_connected" if self._connected else "dash_disconnected"))
+        self.set_connection_status(self._connected)
 
     def update_state(self, state: TelemetryState) -> None:
         self.gps_lat.set_text(f"{state.lat:.6f}" if state.lat is not None else _NA)
@@ -245,4 +329,6 @@ class Dashboard(QWidget):
     def set_connection_status(self, connected: bool) -> None:
         self._connected = connected
         self.conn_icon_label.setPixmap(icons.status_led_icon(connected))
+        color = CONNECTED_COLOR if connected else DISCONNECTED_COLOR
+        self.conn_text.setStyleSheet(f"color: {color}; font-family: {_MONO_FONT}; font-weight: 700; font-size: 13px;")
         self.conn_text.setText(i18n.tr("dash_connected" if connected else "dash_disconnected"))
