@@ -100,6 +100,8 @@ class MainWindow(QMainWindow):
         self._map.route_bridge.waypoint_added.connect(self._route_manager.add)
         self._map.route_bridge.waypoint_removed.connect(self._route_manager.remove_at)
         self._map.route_bridge.waypoint_added_typed.connect(self._route_manager.add_typed)
+        self._map.route_bridge.home_position_picked.connect(self._on_home_position_picked)
+        self._map.route_bridge.view_action_triggered.connect(self._on_view_action)
 
         self._route_overlay = RouteEditorOverlay()
         self._route_overlay.waypoints_edited.connect(self._route_manager.set_all)
@@ -206,11 +208,11 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((clear_route_action, "menu_route_clear"))
         clear_route_action.triggered.connect(self._route_manager.clear)
 
-        edit_route_action = route_menu.addAction("")
-        self._i18n_actions.append((edit_route_action, "menu_route_edit"))
-        edit_route_action.setCheckable(True)
-        edit_route_action.setChecked(True)
-        edit_route_action.toggled.connect(self._route_overlay.setVisible)
+        self._route_editor_action = route_menu.addAction("")
+        self._i18n_actions.append((self._route_editor_action, "menu_route_edit"))
+        self._route_editor_action.setCheckable(True)
+        self._route_editor_action.setChecked(True)
+        self._route_editor_action.toggled.connect(self._route_overlay.setVisible)
 
         route_menu.addSeparator()
         import_route_action = route_menu.addAction("")
@@ -293,6 +295,17 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((jump_action, "menu_view_jump"))
         jump_action.setShortcut("Ctrl+Home")
         jump_action.triggered.connect(self._map.center_on_current)
+
+        # Same QAction instance as in the Route menu - toggling it from
+        # either place (or from the map's right-click view-options submenu)
+        # keeps both checkmarks and the overlay's visibility in sync for free.
+        view_menu.addAction(self._route_editor_action)
+
+        self._coord_overlay_action = view_menu.addAction("")
+        self._i18n_actions.append((self._coord_overlay_action, "menu_view_coords"))
+        self._coord_overlay_action.setCheckable(True)
+        self._coord_overlay_action.setChecked(False)
+        self._coord_overlay_action.toggled.connect(self._map.set_coord_overlay_visible)
 
         vehicle_menu = view_menu.addMenu("")
         self._i18n_menus.append((vehicle_menu, "menu_view_vehicle"))
@@ -549,6 +562,26 @@ class MainWindow(QMainWindow):
         save_home_position(lat, lon)
         self._map.center_on_point(lat, lon)
         self.statusBar().showMessage(i18n.tr("status_home_position_saved"), 5000)
+
+    def _on_home_position_picked(self, lat: float, lon: float) -> None:
+        # Picked via the map's right-click "Als Home setzen" - the user is
+        # already looking at exactly that spot, so unlike _open_home_settings()
+        # there's no need to also re-center the view on save.
+        save_home_position(lat, lon)
+        self.statusBar().showMessage(i18n.tr("status_home_position_saved"), 5000)
+
+    def _on_view_action(self, action: str) -> None:
+        # Dispatch for the map's right-click "Ansicht" submenu - reuses the
+        # exact same toggle methods/actions as the menu bar's View menu so
+        # both stay in sync no matter which one the user last touched.
+        if action == "lock":
+            self._toggle_map_lock()
+        elif action == "heading":
+            self._toggle_heading_mode()
+        elif action == "route_editor":
+            self._route_editor_action.setChecked(not self._route_editor_action.isChecked())
+        elif action == "coords":
+            self._coord_overlay_action.setChecked(not self._coord_overlay_action.isChecked())
 
     def _set_horizon_scale(self, action) -> None:
         self._horizon.set_scale(action.data())

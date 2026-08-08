@@ -2,10 +2,11 @@
 
 All live updates afterwards go through small JS function calls
 (updateDrone / setAutoCenter / setHeadingMode / clearPath / setVehicleType /
-jumpToDrone / centerOnPoint / setRoute / setRouteMode) via runJavaScript(),
-so the map never reloads and the marker moves smoothly. Route-drawing
-clicks travel the other way (JS -> Python) over a QWebChannel bridge
-registered as `routeBridge`.
+jumpToDrone / centerOnPoint / setRoute / setRouteMode / setCoordOverlayVisible)
+via runJavaScript(), so the map never reloads and the marker moves smoothly.
+Route-drawing clicks, the "set home"/view-options context menu entries, and
+the coordinate readout travel the other way (JS -> Python) over a
+QWebChannel bridge registered as `routeBridge`.
 """
 
 MAP_HTML_TEMPLATE = """<!DOCTYPE html>
@@ -40,21 +41,56 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   .route-context-menu {
     position: absolute; display: none; z-index: 1000;
     background: #20242b; border: 1px solid #3a4048; border-radius: 6px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.5); overflow: hidden; min-width: 150px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5); overflow: visible; min-width: 170px;
+    padding: 4px 0;
   }
   .route-context-menu button {
     display: block; width: 100%; padding: 7px 14px; border: none; background: none;
     color: #e8e8e8; text-align: left; font-size: 12px; cursor: pointer;
   }
   .route-context-menu button:hover { background: #2ecc71; color: #10151a; }
+  .route-context-menu-sep { height: 1px; background: #3a4048; margin: 4px 0; }
+  .route-context-submenu { position: relative; }
+  .route-context-submenu-label {
+    padding: 7px 14px; font-size: 12px; color: #e8e8e8; cursor: default;
+  }
+  .route-context-submenu:hover .route-context-submenu-label { background: #2ecc71; color: #10151a; }
+  .route-context-submenu-flyout {
+    display: none; position: absolute; left: 100%; top: -4px;
+    background: #20242b; border: 1px solid #3a4048; border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5); min-width: 190px; overflow: hidden; padding: 4px 0;
+  }
+  .route-context-submenu:hover .route-context-submenu-flyout { display: block; }
+  .route-context-submenu-flyout button {
+    display: block; width: 100%; padding: 7px 14px; border: none; background: none;
+    color: #e8e8e8; text-align: left; font-size: 12px; cursor: pointer;
+  }
+  .route-context-submenu-flyout button:hover { background: #2ecc71; color: #10151a; }
+  .coord-overlay {
+    position: absolute; display: none; z-index: 999; pointer-events: none;
+    background: rgba(18,22,28,0.88); color: #e8e8e8; font-size: 11px; font-family: monospace;
+    padding: 3px 7px; border-radius: 5px; border: 1px solid #0d1117; white-space: nowrap;
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="coord-overlay" class="coord-overlay"></div>
 <div id="route-context-menu" class="route-context-menu">
   <button onclick="contextMenuPick('waypoint')">__LABEL_WAYPOINT__</button>
   <button onclick="contextMenuPick('start')">__LABEL_START__</button>
   <button onclick="contextMenuPick('end')">__LABEL_END__</button>
+  <div class="route-context-menu-sep"></div>
+  <button onclick="contextMenuSetHome()">__LABEL_SET_HOME__</button>
+  <div class="route-context-submenu">
+    <div class="route-context-submenu-label">__LABEL_VIEW__ &#9656;</div>
+    <div class="route-context-submenu-flyout">
+      <button onclick="contextMenuViewAction('lock')">__LABEL_VIEW_LOCK__</button>
+      <button onclick="contextMenuViewAction('heading')">__LABEL_VIEW_HEADING__</button>
+      <button onclick="contextMenuViewAction('route_editor')">__LABEL_VIEW_ROUTE_EDITOR__</button>
+      <button onclick="contextMenuViewAction('coords')">__LABEL_VIEW_COORDS__</button>
+    </div>
+  </div>
 </div>
 <script>
   var map = L.map('map', { zoomControl: true }).setView([__CENTER_LAT__, __CENTER_LON__], __ZOOM__);
@@ -359,6 +395,42 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     hideContextMenu();
   }
 
+  function contextMenuSetHome() {
+    if (contextMenuLatLng && routeBridge) {
+      routeBridge.pick_home_position(contextMenuLatLng.lat, contextMenuLatLng.lng);
+    }
+    hideContextMenu();
+  }
+
+  function contextMenuViewAction(action) {
+    if (routeBridge) { routeBridge.view_action(action); }
+    hideContextMenu();
+  }
+
+  // ---------------------------------------------------------- coordinate readout
+
+  var coordOverlayEl = document.getElementById('coord-overlay');
+  var coordOverlayEnabled = false;
+
+  function setCoordOverlayVisible(enabled) {
+    coordOverlayEnabled = enabled;
+    if (!enabled) { coordOverlayEl.style.display = 'none'; }
+  }
+
+  map.on('mousemove', function (e) {
+    if (!coordOverlayEnabled) return;
+    var oe = e.originalEvent;
+    var ll = mapRotationDeg ? screenPointToLatLng(oe.clientX, oe.clientY) : e.latlng;
+    coordOverlayEl.textContent = ll.lat.toFixed(6) + ', ' + ll.lng.toFixed(6);
+    coordOverlayEl.style.left = (oe.clientX + 14) + 'px';
+    coordOverlayEl.style.top = (oe.clientY + 14) + 'px';
+    coordOverlayEl.style.display = 'block';
+  });
+
+  map.on('mouseout', function () {
+    if (coordOverlayEnabled) { coordOverlayEl.style.display = 'none'; }
+  });
+
   // -------------------------------------------------------------- no-fly zones
 
   var nfzLayers = [];
@@ -411,6 +483,12 @@ def get_map_html(
     label_waypoint: str = "Wegpunkt",
     label_start: str = "Startpunkt",
     label_end: str = "Endpunkt",
+    label_set_home: str = "Als Home setzen",
+    label_view: str = "Ansicht",
+    label_view_lock: str = "Auto-Center",
+    label_view_heading: str = "Drohnenrichtung/Norden oben",
+    label_view_route_editor: str = "Wegpunkt-Editor anzeigen",
+    label_view_coords: str = "Koordinaten anzeigen",
 ) -> str:
     return (
         MAP_HTML_TEMPLATE
@@ -420,4 +498,10 @@ def get_map_html(
         .replace("__LABEL_WAYPOINT__", label_waypoint)
         .replace("__LABEL_START__", label_start)
         .replace("__LABEL_END__", label_end)
+        .replace("__LABEL_SET_HOME__", label_set_home)
+        .replace("__LABEL_VIEW__", label_view)
+        .replace("__LABEL_VIEW_LOCK__", label_view_lock)
+        .replace("__LABEL_VIEW_HEADING__", label_view_heading)
+        .replace("__LABEL_VIEW_ROUTE_EDITOR__", label_view_route_editor)
+        .replace("__LABEL_VIEW_COORDS__", label_view_coords)
     )

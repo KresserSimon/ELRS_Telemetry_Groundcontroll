@@ -32,6 +32,12 @@ class MapWidget(QWebEngineView):
             "label_waypoint": i18n.tr("mapctx_waypoint"),
             "label_start": i18n.tr("mapctx_start"),
             "label_end": i18n.tr("mapctx_end"),
+            "label_set_home": i18n.tr("mapctx_set_home"),
+            "label_view": i18n.tr("mapctx_view"),
+            "label_view_lock": i18n.tr("mapctx_view_lock"),
+            "label_view_heading": i18n.tr("mapctx_view_heading"),
+            "label_view_route_editor": i18n.tr("mapctx_view_route_editor"),
+            "label_view_coords": i18n.tr("mapctx_view_coords"),
         }
         if home_lat is not None and home_lon is not None:
             html_kwargs["center_lat"] = home_lat
@@ -108,6 +114,9 @@ class MapWidget(QWebEngineView):
 
     def set_heading_mode(self, heading_up: bool) -> None:
         self.page().runJavaScript(f"setHeadingMode({'true' if heading_up else 'false'});")
+
+    def set_coord_overlay_visible(self, enabled: bool) -> None:
+        self.page().runJavaScript(f"setCoordOverlayVisible({'true' if enabled else 'false'});")
 
     def clear_path(self) -> None:
         self.page().runJavaScript("clearPath();")
