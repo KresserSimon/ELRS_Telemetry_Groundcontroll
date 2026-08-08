@@ -20,6 +20,9 @@ class TrackOverlay(DraggableOverlay):
     start_pause_clicked = pyqtSignal()
     export_clicked = pyqtSignal()
 
+    MIN_WIDTH = 160
+    MIN_HEIGHT = 90
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -27,7 +30,7 @@ class TrackOverlay(DraggableOverlay):
             f"TrackOverlay {{ background-color: {PANEL_BG}; "
             f"border: 1px solid {BORDER}; border-radius: 10px; }}"
         )
-        self.setFixedWidth(210)
+        self.resize(210, 110)
 
         self._recording = False
         self._point_count = 0

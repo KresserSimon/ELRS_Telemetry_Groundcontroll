@@ -18,7 +18,7 @@ CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 
 
 class MapWidget(QWebEngineView):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, home_lat: Optional[float] = None, home_lon: Optional[float] = None) -> None:
         super().__init__(parent)
         self._auto_center = True
         self._overlays: list = []  # [[widget, corner], ...]
@@ -28,11 +28,15 @@ class MapWidget(QWebEngineView):
         self._channel.registerObject("routeBridge", self.route_bridge)
         self.page().setWebChannel(self._channel)
 
-        self.setHtml(get_map_html(
-            label_waypoint=i18n.tr("mapctx_waypoint"),
-            label_start=i18n.tr("mapctx_start"),
-            label_end=i18n.tr("mapctx_end"),
-        ))
+        html_kwargs = {
+            "label_waypoint": i18n.tr("mapctx_waypoint"),
+            "label_start": i18n.tr("mapctx_start"),
+            "label_end": i18n.tr("mapctx_end"),
+        }
+        if home_lat is not None and home_lon is not None:
+            html_kwargs["center_lat"] = home_lat
+            html_kwargs["center_lon"] = home_lon
+        self.setHtml(get_map_html(**html_kwargs))
 
     def add_overlay(self, widget, corner: str = "top-right") -> None:
         widget.setParent(self)
@@ -116,6 +120,9 @@ class MapWidget(QWebEngineView):
 
     def center_on_current(self) -> None:
         self.page().runJavaScript("jumpToDrone();")
+
+    def center_on_point(self, lat: float, lon: float) -> None:
+        self.page().runJavaScript(f"centerOnPoint({lat}, {lon});")
 
     def render_route(self, waypoints: Iterable[Waypoint], segment_distances: Optional[List[float]] = None) -> None:
         waypoints = list(waypoints)

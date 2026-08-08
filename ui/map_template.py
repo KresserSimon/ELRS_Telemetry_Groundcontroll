@@ -2,9 +2,10 @@
 
 All live updates afterwards go through small JS function calls
 (updateDrone / setAutoCenter / setHeadingMode / clearPath / setVehicleType /
-jumpToDrone / setRoute / setRouteMode) via runJavaScript(), so the map never
-reloads and the marker moves smoothly. Route-drawing clicks travel the other
-way (JS -> Python) over a QWebChannel bridge registered as `routeBridge`.
+jumpToDrone / centerOnPoint / setRoute / setRouteMode) via runJavaScript(),
+so the map never reloads and the marker moves smoothly. Route-drawing
+clicks travel the other way (JS -> Python) over a QWebChannel bridge
+registered as `routeBridge`.
 """
 
 MAP_HTML_TEMPLATE = """<!DOCTYPE html>
@@ -238,6 +239,10 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     if (droneMarker) {
       map.panTo(droneMarker.getLatLng(), { animate: true });
     }
+  }
+
+  function centerOnPoint(lat, lon) {
+    map.setView([lat, lon], map.getZoom());
   }
 
   function clearPath() {

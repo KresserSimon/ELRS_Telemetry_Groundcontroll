@@ -1,19 +1,106 @@
-"""Shared drag-to-reposition behaviour for floating map overlay widgets
-(HorizonWidget, RouteEditorOverlay, ...). A drag calls the parent MapWidget's
-set_overlay_free() so the manual position sticks instead of snapping back
-to the last preset corner on the next resize.
+"""Shared drag-to-reposition and drag-to-resize behaviour for floating map
+overlay widgets (HorizonWidget, RouteEditorOverlay, TrackOverlay, ...).
+
+Dragging the widget body calls the parent MapWidget's set_overlay_free() so
+the manual position sticks instead of snapping back to the last preset
+corner on the next resize. Resizing is done from a small grip in the
+bottom-right corner - a separate child widget rather than a hit-test zone
+on the overlay itself, since the overlay is otherwise packed edge-to-edge
+with interactive children (tables, buttons) that would swallow the mouse
+press before it ever reached a zone check.
 """
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
 
+class _ResizeGrip(QWidget):
+    SIZE = 14
+
+    def __init__(self, overlay: "DraggableOverlay") -> None:
+        super().__init__(overlay)
+        self._overlay = overlay
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        self._drag_start = None
+        self._start_size = None
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start = event.globalPosition().toPoint()
+            self._start_size = self._overlay.size()
+            event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_start is None or not (event.buttons() & Qt.MouseButton.LeftButton):
+            return
+        delta = event.globalPosition().toPoint() - self._drag_start
+        self._overlay.request_resize(
+            self._start_size.width() + delta.x(),
+            self._start_size.height() + delta.y(),
+        )
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start = None
+            event.accept()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(255, 255, 255, 140))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        s = self.SIZE
+        for offset in (3, 7, 11):
+            painter.drawLine(s - offset, s - 1, s - 1, s - offset)
+        painter.end()
+
+
 class DraggableOverlay(QWidget):
+    # Subclasses may override to change how small/large a drag-resize can go.
+    MIN_WIDTH = 120
+    MIN_HEIGHT = 70
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self._drag_start = None
+        self._resize_grip = _ResizeGrip(self)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._resize_grip.move(self.width() - _ResizeGrip.SIZE, self.height() - _ResizeGrip.SIZE)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # The grip is created before subclasses add their own content in
+        # their __init__, so without this it would end up underneath
+        # whatever they add - raise it back to the top once everything
+        # exists and the widget is actually about to be shown.
+        self._resize_grip.raise_()
+
+    def request_resize(self, width: int, height: int) -> None:
+        """Apply a user-driven resize from the corner grip. Subclasses with
+        non-default resize semantics (e.g. a square gauge that must scale
+        both dimensions together) should override this instead of touching
+        the grip itself."""
+        width = max(self.MIN_WIDTH, width)
+        height = max(self.MIN_HEIGHT, height)
+        parent = self.parentWidget()
+        if parent is not None:
+            width = min(width, max(self.MIN_WIDTH, parent.width() - self.x()))
+            height = min(height, max(self.MIN_HEIGHT, parent.height() - self.y()))
+        self.resize(width, height)
+        self._notify_parent_resized()
+
+    def _notify_parent_resized(self) -> None:
+        parent = self.parentWidget()
+        if parent is not None and hasattr(parent, "reposition_overlays"):
+            parent.reposition_overlays()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

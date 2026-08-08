@@ -46,6 +46,13 @@ class HorizonWidget(DraggableOverlay):
     def scale(self) -> float:
         return self._scale
 
+    def request_resize(self, width: int, height: int) -> None:
+        # The gauge is circular, so drag-resizing scales both dimensions
+        # together (via set_scale(), which keeps it square) rather than
+        # letting width/height diverge like the rectangular overlays.
+        self.set_scale(max(width, height) / BASE_PANEL_SIZE)
+        self._notify_parent_resized()
+
     def update_attitude(self, roll: Optional[float], pitch: Optional[float]) -> None:
         self._roll = roll
         self._pitch = pitch

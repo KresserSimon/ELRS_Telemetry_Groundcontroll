@@ -66,6 +66,9 @@ class RouteEditorOverlay(DraggableOverlay):
 
     waypoints_edited = pyqtSignal(list)
 
+    MIN_WIDTH = 420
+    MIN_HEIGHT = 220
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -73,8 +76,7 @@ class RouteEditorOverlay(DraggableOverlay):
             f"RouteEditorOverlay {{ background-color: {PANEL_BG}; "
             f"border: 1px solid {BORDER}; border-radius: 10px; }}"
         )
-        self.setFixedWidth(660)
-        self.setMaximumHeight(360)
+        self.resize(660, 360)
 
         self._waypoints: List[Waypoint] = []
         self._waypoint_count = 0

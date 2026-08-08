@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from alerts.tts_alert import BatteryAlertMonitor, TTSWorker
 from core import i18n
 from core.dashboard_config import save_visible_fields
+from core.home_config import load_home_position, save_home_position
 from core.nfz import NoFlyZoneManager
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
@@ -36,6 +37,7 @@ from ui.connection_dialog import ConnectionSettingsDialog
 from ui.dashboard import Dashboard
 from ui.dashboard_settings_dialog import DashboardSettingsDialog
 from ui.flight_log_dialog import FlightLogSettingsDialog
+from ui.home_position_dialog import HomePositionDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_buttons import HeadingModeButton, LockButton
 from ui.map_widget import MapWidget
@@ -86,7 +88,9 @@ class MainWindow(QMainWindow):
         self._battery_low_v = args.low_cell_voltage
         self._battery_critical_v = args.critical_cell_voltage
 
-        self._map = MapWidget()
+        home_position = load_home_position()
+        home_lat, home_lon = home_position if home_position is not None else (None, None)
+        self._map = MapWidget(home_lat=home_lat, home_lon=home_lon)
         self._dashboard = Dashboard()
         self._horizon = HorizonWidget()
         self._map.add_overlay(self._horizon, DEFAULT_HORIZON_CORNER)
@@ -266,6 +270,10 @@ class MainWindow(QMainWindow):
         battery_settings_action = settings_menu.addAction("")
         self._i18n_actions.append((battery_settings_action, "menu_battery_settings"))
         battery_settings_action.triggered.connect(self._open_battery_settings)
+
+        home_settings_action = settings_menu.addAction("")
+        self._i18n_actions.append((home_settings_action, "menu_home_settings"))
+        home_settings_action.triggered.connect(self._open_home_settings)
 
         dashboard_settings_action = settings_menu.addAction("")
         self._i18n_actions.append((dashboard_settings_action, "menu_dashboard_settings"))
@@ -526,6 +534,21 @@ class MainWindow(QMainWindow):
         self._battery_low_v = dialog.low_cell_voltage()
         self._battery_critical_v = dialog.critical_cell_voltage()
         self._battery_monitor.configure(self._battery_cells, self._battery_low_v, self._battery_critical_v)
+
+    def _open_home_settings(self) -> None:
+        current = load_home_position()
+        live_position = None
+        if self._last_telemetry_state is not None and self._last_telemetry_state.has_gps_fix():
+            live_position = (self._last_telemetry_state.lat, self._last_telemetry_state.lon)
+
+        dialog = HomePositionDialog(current, live_position, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        lat, lon = dialog.home_position()
+        save_home_position(lat, lon)
+        self._map.center_on_point(lat, lon)
+        self.statusBar().showMessage(i18n.tr("status_home_position_saved"), 5000)
 
     def _set_horizon_scale(self, action) -> None:
         self._horizon.set_scale(action.data())
