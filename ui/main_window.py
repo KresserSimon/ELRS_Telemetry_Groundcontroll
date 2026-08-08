@@ -1,10 +1,12 @@
 """Main application window: map + dashboard + menus, wired to a telemetry worker."""
 from __future__ import annotations
 
+import sys
 import time
+from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QActionGroup
+from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtGui import QActionGroup, QDesktopServices
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -368,6 +370,12 @@ class MainWindow(QMainWindow):
             self._lang_group.addAction(action)
         self._lang_group.triggered.connect(lambda action: i18n.set_language(action.data()))
 
+        help_menu = menu.addMenu("")
+        self._i18n_menus.append((help_menu, "menu_help"))
+        manual_action = help_menu.addAction("")
+        self._i18n_actions.append((manual_action, "menu_help_manual"))
+        manual_action.triggered.connect(self._open_manual)
+
         sim_menu = menu.addMenu("")
         self._i18n_menus.append((sim_menu, "menu_simulation"))
         self._demo_action = sim_menu.addAction("")
@@ -562,6 +570,24 @@ class MainWindow(QMainWindow):
         save_home_position(lat, lon)
         self._map.center_on_point(lat, lon)
         self.statusBar().showMessage(i18n.tr("status_home_position_saved"), 5000)
+
+    def _open_manual(self) -> None:
+        path = self._manual_pdf_path()
+        if not path.is_file():
+            QMessageBox.warning(self, i18n.tr("msgbox_manual_missing_title"), i18n.tr("msgbox_manual_missing_body"))
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    @staticmethod
+    def _manual_pdf_path() -> Path:
+        # PyInstaller sets sys._MEIPASS to the bundled-data directory in
+        # both --onefile and --onedir builds; running from source, docs/
+        # sits next to this file's grandparent (ui/ -> elrs_ground_station/).
+        if getattr(sys, "frozen", False):
+            base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        else:
+            base = Path(__file__).resolve().parent.parent
+        return base / "docs" / "ELRS_Ground_Station_Benutzerhandbuch.pdf"
 
     def _on_home_position_picked(self, lat: float, lon: float) -> None:
         # Picked via the map's right-click "Als Home setzen" - the user is

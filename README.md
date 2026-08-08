@@ -268,8 +268,12 @@ cd elrs_ground_station
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt pyinstaller
-pyinstaller --name ELRS_GroundStation --onedir main.py
+pyinstaller --name ELRS_GroundStation --onedir --add-data "docs;docs" main.py
 ```
+
+`--add-data "docs;docs"` bündelt das PDF-Handbuch mit, damit Hilfe →
+Benutzerhandbuch öffnen... es auch in der kompilierten Exe findet, nicht
+nur beim Start aus dem Quellcode.
 
 Ergebnis liegt unter `dist\ELRS_GroundStation\ELRS_GroundStation.exe` – der
 gesamte `dist\ELRS_GroundStation`-Ordner (Exe + `_internal`-Verzeichnis mit
@@ -611,8 +615,12 @@ cd elrs_ground_station
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt pyinstaller
-pyinstaller --name ELRS_GroundStation --onedir main.py
+pyinstaller --name ELRS_GroundStation --onedir --add-data "docs;docs" main.py
 ```
+
+`--add-data "docs;docs"` bundles the PDF manual so Help -> Open User
+Manual... can find it in the compiled exe too, not just when run from
+source.
 
 Result lands at `dist\ELRS_GroundStation\ELRS_GroundStation.exe` - the
 whole `dist\ELRS_GroundStation` folder (exe + `_internal` directory with
