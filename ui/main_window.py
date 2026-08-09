@@ -93,6 +93,12 @@ HORIZON_SCALES = (
     ("horizon_scale_xlarge", 2.0),
 )
 DEFAULT_HORIZON_SCALE = 1.0
+ALTITUDE_TRACK_TIME_UNITS = (
+    ("menu_altitude_track_unit_s", "s"),
+    ("menu_altitude_track_unit_min", "min"),
+    ("menu_altitude_track_unit_h", "h"),
+)
+DEFAULT_ALTITUDE_TRACK_TIME_UNIT = "s"
 
 
 def _resize_from_saved(widget, size) -> None:
@@ -273,6 +279,10 @@ class MainWindow(QMainWindow):
         if saved_model_name and saved_model_name in saved_profiles:
             self._apply_model_profile(saved_profiles[saved_model_name])
 
+        self._altitude_track_overlay.set_time_unit(
+            self._ui_state.get("altitude_track_time_unit", DEFAULT_ALTITUDE_TRACK_TIME_UNIT)
+        )
+
         # Persist every menu/view toggle immediately on change (matching
         # every other config file in this app); overlay sizes only change
         # via continuous mouse-drag ticks, so those are captured once in
@@ -289,6 +299,7 @@ class MainWindow(QMainWindow):
         self._vehicle_group.triggered.connect(self._persist_ui_state)
         self._horizon_pos_group.triggered.connect(self._persist_ui_state)
         self._horizon_scale_group.triggered.connect(self._persist_ui_state)
+        self._altitude_track_unit_group.triggered.connect(self._persist_ui_state)
         self._lang_group.triggered.connect(self._persist_ui_state)
         self._track_overlay.auto_toggled.connect(self._persist_ui_state)
         self._dashboard.model_profile_selected.connect(self._on_dashboard_model_selected)
@@ -480,6 +491,21 @@ class MainWindow(QMainWindow):
         self._altitude_track_dock_action.setCheckable(True)
         self._altitude_track_dock_action.setChecked(self._ui_state.get("altitude_track_docked", True))
         self._altitude_track_dock_action.toggled.connect(self._set_altitude_track_docked)
+
+        altitude_track_unit_menu = view_map_menu.addMenu("")
+        self._i18n_menus.append((altitude_track_unit_menu, "menu_altitude_track_unit"))
+        self._altitude_track_unit_group = QActionGroup(self)
+        self._altitude_track_unit_group.setExclusive(True)
+        for key, unit in ALTITUDE_TRACK_TIME_UNITS:
+            action = altitude_track_unit_menu.addAction("")
+            self._i18n_actions.append((action, key))
+            action.setCheckable(True)
+            action.setData(unit)
+            action.setChecked(unit == self._ui_state.get("altitude_track_time_unit", DEFAULT_ALTITUDE_TRACK_TIME_UNIT))
+            self._altitude_track_unit_group.addAction(action)
+        self._altitude_track_unit_group.triggered.connect(
+            lambda action: self._altitude_track_overlay.set_time_unit(action.data())
+        )
 
         self._track_overlay_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._track_overlay_action, "menu_track_overlay"))
@@ -1345,6 +1371,7 @@ class MainWindow(QMainWindow):
             "language": i18n.get_language(),
             "path_point_threshold_m": self._path_point_threshold_m,
             "model_profile": self._dashboard.current_model_profile_name(),
+            "altitude_track_time_unit": self._altitude_track_overlay.time_unit(),
         }
 
     def _persist_ui_state(self, *_args) -> None:

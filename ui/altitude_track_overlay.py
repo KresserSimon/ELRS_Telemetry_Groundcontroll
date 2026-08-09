@@ -21,9 +21,14 @@ LINE_COLOR = QColor(ACCENT)
 FILL_COLOR = QColor(61, 219, 201, 60)
 GRID_COLOR = QColor(255, 255, 255, 30)
 MARGIN_LEFT = 38
-MARGIN_BOTTOM = 16
-MARGIN_TOP = 6
+MARGIN_BOTTOM = 28
+MARGIN_TOP = 16
 MARGIN_RIGHT = 6
+
+# X-axis time unit: display divisor (seconds per unit) + i18n key for the
+# unit suffix shown in the axis title and tick labels.
+TIME_UNITS = {"s": (1, "altitude_track_unit_s"), "min": (60, "altitude_track_unit_min"), "h": (3600, "altitude_track_unit_h")}
+DEFAULT_TIME_UNIT = "s"
 
 # Keeps memory bounded across a very long flight - once over the cap, every
 # other sample is dropped, halving resolution but keeping the full time
@@ -36,11 +41,18 @@ class AltitudeChartWidget(QWidget):
         super().__init__(parent)
         self.setStyleSheet(f"background-color: {PANEL_BG};")
         self._samples: List[Tuple[float, float]] = []  # (elapsed_s, alt_m)
+        self._time_unit = DEFAULT_TIME_UNIT
 
     def add_sample(self, elapsed_s: float, alt_m: float) -> None:
         self._samples.append((elapsed_s, alt_m))
         if len(self._samples) > MAX_SAMPLES:
             self._samples = self._samples[::2]
+        self.update()
+
+    def set_time_unit(self, unit: str) -> None:
+        if unit not in TIME_UNITS:
+            return
+        self._time_unit = unit
         self.update()
 
     def clear(self) -> None:
@@ -69,12 +81,12 @@ class AltitudeChartWidget(QWidget):
         t_min, t_max = times[0], times[-1]
         if t_max - t_min < 1.0:
             t_max = t_min + 1.0
-        y_min, y_max = min(alts), max(alts)
-        if y_max - y_min < 1.0:
-            y_min, y_max = y_min - 1.0, y_max + 1.0
-        y_pad = (y_max - y_min) * 0.1
-        y_min -= y_pad
-        y_max += y_pad
+        # The Y axis always starts at 0m rather than the lowest sample, so
+        # altitude is read as "height above ground/home", not zoomed into a
+        # narrow, misleadingly-flat-looking band around whatever altitudes
+        # happened to be flown.
+        y_min = 0.0
+        y_max = max(max(alts), 1.0) * 1.1
 
         def to_point(t: float, alt: float) -> QPointF:
             px = plot_rect.left() + ((t - t_min) / (t_max - t_min)) * plot_rect.width()
@@ -96,6 +108,11 @@ class AltitudeChartWidget(QWidget):
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 f"{y_val:.0f}",
             )
+        painter.drawText(
+            QRectF(0, 0, self.width(), MARGIN_TOP),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            f"  {i18n.tr('altitude_track_axis_y')}",
+        )
 
         fill_path = QPainterPath()
         fill_path.moveTo(to_point(times[0], y_min))
@@ -115,12 +132,22 @@ class AltitudeChartWidget(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(line_path)
 
-        elapsed = int(times[-1])
-        painter.setPen(QColor(CAPTION_COLOR))
+        divisor, unit_key = TIME_UNITS[self._time_unit]
+        unit_label = i18n.tr(unit_key)
+        for i in range(4):
+            frac = i / 3
+            t_val = t_min + frac * (t_max - t_min)
+            px = plot_rect.left() + frac * plot_rect.width()
+            painter.setPen(QColor(CAPTION_COLOR))
+            painter.drawText(
+                QRectF(px - 20, plot_rect.bottom() + 2, 40, 12),
+                Qt.AlignmentFlag.AlignCenter,
+                f"{t_val / divisor:.1f}",
+            )
         painter.drawText(
-            QRectF(plot_rect.left(), self.height() - MARGIN_BOTTOM + 2, plot_rect.width(), MARGIN_BOTTOM - 2),
+            QRectF(plot_rect.left(), self.height() - 14, plot_rect.width(), 14),
             Qt.AlignmentFlag.AlignCenter,
-            f"{elapsed // 60:02d}:{elapsed % 60:02d}",
+            i18n.tr("altitude_track_axis_x", unit=unit_label),
         )
         painter.end()
 
@@ -158,6 +185,12 @@ class AltitudeTrackOverlay(DraggableOverlay):
 
     def reset(self) -> None:
         self._chart.clear()
+
+    def set_time_unit(self, unit: str) -> None:
+        self._chart.set_time_unit(unit)
+
+    def time_unit(self) -> str:
+        return self._chart._time_unit
 
     def retranslate(self) -> None:
         self._title_label.setText(i18n.tr("altitude_track_title"))
