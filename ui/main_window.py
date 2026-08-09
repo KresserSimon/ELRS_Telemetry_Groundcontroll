@@ -42,7 +42,8 @@ from ui.dashboard import Dashboard
 from ui.dashboard_settings_dialog import DashboardSettingsDialog
 from ui.elevation_profile_dialog import ElevationProfileDialog
 from ui.flight_log_dialog import FlightLogSettingsDialog
-from ui.home_position_dialog import HomePositionDialog
+from ui.grid_pattern_dialog import GridPatternDialog
+from ui.home_position_dialog import DEFAULT_LAT, DEFAULT_LON, HomePositionDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_buttons import HeadingModeButton, LockButton
 from ui.map_widget import MapWidget
@@ -238,6 +239,11 @@ class MainWindow(QMainWindow):
         export_route_action = route_menu.addAction("")
         self._i18n_actions.append((export_route_action, "menu_route_export"))
         export_route_action.triggered.connect(self._export_route)
+
+        route_menu.addSeparator()
+        grid_pattern_action = route_menu.addAction("")
+        self._i18n_actions.append((grid_pattern_action, "menu_grid_pattern"))
+        grid_pattern_action.triggered.connect(self._open_grid_pattern)
 
         # --------------------------------------------------------- Sperrzonen
         nfz_menu = menu.addMenu("")
@@ -615,6 +621,21 @@ class MainWindow(QMainWindow):
         save_home_position(lat, lon)
         self._map.center_on_point(lat, lon)
         self.statusBar().showMessage(i18n.tr("status_home_position_saved"), 5000)
+
+    def _open_grid_pattern(self) -> None:
+        live_position = None
+        if self._last_telemetry_state is not None and self._last_telemetry_state.has_gps_fix():
+            live_position = (self._last_telemetry_state.lat, self._last_telemetry_state.lon)
+
+        center_default = live_position or load_home_position() or (DEFAULT_LAT, DEFAULT_LON)
+
+        dialog = GridPatternDialog(center_default, live_position, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        waypoints = dialog.waypoints()
+        self._route_manager.set_all(waypoints)
+        self.statusBar().showMessage(i18n.tr("status_grid_pattern_generated", count=len(waypoints)), 5000)
 
     def _open_elevation_profile(self) -> None:
         if not self._route_manager.waypoints():
