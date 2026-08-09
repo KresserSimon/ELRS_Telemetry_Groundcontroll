@@ -20,7 +20,12 @@ from PyQt6.QtWidgets import (
 
 from alerts.tts_alert import BatteryAlertMonitor, TTSWorker
 from core import i18n
-from core.dashboard_config import save_dashboard_layout, save_visible_fields
+from core.dashboard_config import (
+    load_dashboard_position,
+    save_dashboard_layout,
+    save_dashboard_position,
+    save_visible_fields,
+)
 from core.home_config import load_home_position, save_home_position
 from core.nfz import NoFlyZoneManager
 from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor
@@ -148,13 +153,14 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self._map)
-        splitter.addWidget(self._dashboard)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
-        layout.addWidget(splitter)
+        self._splitter = QSplitter()
+        self._splitter.addWidget(self._map)
+        self._splitter.addWidget(self._dashboard)
+        layout.addWidget(self._splitter)
         self.setCentralWidget(central)
+
+        self._dashboard_position = load_dashboard_position()
+        self._apply_dashboard_position(self._dashboard_position)
 
         self.setStatusBar(QStatusBar())
 
@@ -767,6 +773,7 @@ class MainWindow(QMainWindow):
             self._dashboard.visible_fields(),
             self._dashboard.group_order(),
             self._dashboard.rows(),
+            self._dashboard_position,
             self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -780,6 +787,23 @@ class MainWindow(QMainWindow):
         rows = dialog.rows()
         self._dashboard.apply_layout(group_order, rows)
         save_dashboard_layout(group_order, rows)
+
+        position = dialog.position()
+        self._apply_dashboard_position(position)
+        save_dashboard_position(position)
+
+    def _apply_dashboard_position(self, position: str) -> None:
+        self._dashboard_position = position
+        horizontal = position in ("left", "right")
+        self._splitter.setOrientation(Qt.Orientation.Horizontal if horizontal else Qt.Orientation.Vertical)
+        if position in ("top", "left"):
+            self._splitter.insertWidget(0, self._dashboard)
+            self._splitter.insertWidget(1, self._map)
+        else:
+            self._splitter.insertWidget(0, self._map)
+            self._splitter.insertWidget(1, self._dashboard)
+        self._splitter.setStretchFactor(self._splitter.indexOf(self._map), 1)
+        self._splitter.setStretchFactor(self._splitter.indexOf(self._dashboard), 0)
 
     def _open_flight_log_settings(self) -> None:
         dialog = FlightLogSettingsDialog(self._log_fields, self._log_interval, self)

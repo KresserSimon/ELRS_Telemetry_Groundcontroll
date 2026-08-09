@@ -10,6 +10,10 @@ from typing import List, Optional, Set, Tuple
 
 CONFIG_PATH = Path.home() / ".elrs_ground_station" / "dashboard_fields.json"
 LAYOUT_CONFIG_PATH = Path.home() / ".elrs_ground_station" / "dashboard_layout.json"
+POSITION_CONFIG_PATH = Path.home() / ".elrs_ground_station" / "dashboard_position.json"
+
+VALID_POSITIONS = ("top", "bottom", "left", "right")
+DEFAULT_POSITION = "bottom"
 
 
 def load_visible_fields() -> Optional[Set[str]]:
@@ -47,5 +51,22 @@ def save_dashboard_layout(group_order: List[str], rows: int) -> None:
         LAYOUT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         payload = {"group_order": group_order, "rows": rows}
         LAYOUT_CONFIG_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load_dashboard_position() -> str:
+    try:
+        data = json.loads(POSITION_CONFIG_PATH.read_text(encoding="utf-8"))
+        position = data["position"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return DEFAULT_POSITION
+    return position if position in VALID_POSITIONS else DEFAULT_POSITION
+
+
+def save_dashboard_position(position: str) -> None:
+    try:
+        POSITION_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        POSITION_CONFIG_PATH.write_text(json.dumps({"position": position}, indent=2), encoding="utf-8")
     except OSError:
         pass

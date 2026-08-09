@@ -10,6 +10,7 @@ from typing import List, Set, Tuple
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
@@ -24,7 +25,15 @@ from PyQt6.QtWidgets import (
 )
 
 from core import i18n
+from core.dashboard_config import VALID_POSITIONS
 from ui.dashboard import MAX_ROWS
+
+_POSITION_LABEL_KEYS = {
+    "top": "dashboard_position_top",
+    "bottom": "dashboard_position_bottom",
+    "left": "dashboard_position_left",
+    "right": "dashboard_position_right",
+}
 
 
 class DashboardSettingsDialog(QDialog):
@@ -34,6 +43,7 @@ class DashboardSettingsDialog(QDialog):
         visible_keys: Set[str],
         group_order: List[str],
         rows: int,
+        position: str = "bottom",
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -76,6 +86,16 @@ class DashboardSettingsDialog(QDialog):
         rows_row.addWidget(self._rows_spin)
         rows_row.addStretch(1)
 
+        self._position_combo = QComboBox()
+        for pos in VALID_POSITIONS:
+            self._position_combo.addItem(i18n.tr(_POSITION_LABEL_KEYS[pos]), pos)
+        idx = self._position_combo.findData(position if position in VALID_POSITIONS else "bottom")
+        self._position_combo.setCurrentIndex(max(0, idx))
+        position_row = QHBoxLayout()
+        position_row.addWidget(QLabel(i18n.tr("dashcfg_position_label")))
+        position_row.addWidget(self._position_combo)
+        position_row.addStretch(1)
+
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
@@ -85,6 +105,7 @@ class DashboardSettingsDialog(QDialog):
         layout.addWidget(order_label)
         layout.addWidget(self._order_list)
         layout.addLayout(rows_row)
+        layout.addLayout(position_row)
         layout.addWidget(button_box)
 
     def visible_fields(self) -> Set[str]:
@@ -95,3 +116,6 @@ class DashboardSettingsDialog(QDialog):
 
     def rows(self) -> int:
         return self._rows_spin.value()
+
+    def position(self) -> str:
+        return self._position_combo.currentData()
