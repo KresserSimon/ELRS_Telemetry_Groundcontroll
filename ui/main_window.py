@@ -23,6 +23,7 @@ from core import i18n
 from core.dashboard_config import save_dashboard_layout, save_visible_fields
 from core.home_config import load_home_position, save_home_position
 from core.nfz import NoFlyZoneManager
+from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor
 from core.openaip_config import load_openaip_config, save_openaip_config
 from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_to_zones
 from core.route import RouteManager
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
             low_cell_voltage=args.low_cell_voltage,
             critical_cell_voltage=args.critical_cell_voltage,
         )
+        self._nfz_proximity_monitor = NfzProximityMonitor(self._tts_worker)
         self._battery_chemistry = "lipo"
         self._battery_cells = args.cells
         self._battery_low_v = args.low_cell_voltage
@@ -258,6 +260,11 @@ class MainWindow(QMainWindow):
         self._nfz_visible_action.setCheckable(True)
         self._nfz_visible_action.setChecked(True)
         self._nfz_visible_action.toggled.connect(self._map.set_nfz_visible)
+
+        self._nfz_proximity_action = nfz_menu.addAction("")
+        self._i18n_actions.append((self._nfz_proximity_action, "menu_nfz_proximity"))
+        self._nfz_proximity_action.setCheckable(True)
+        self._nfz_proximity_action.setChecked(False)
 
         nfz_menu.addSeparator()
         openaip_settings_action = nfz_menu.addAction("")
@@ -761,6 +768,18 @@ class MainWindow(QMainWindow):
             self._has_fix = True
 
         self._battery_monitor.check(state)
+        self._check_nfz_proximity(state)
+
+    def _check_nfz_proximity(self, state: TelemetryState) -> None:
+        if not self._nfz_proximity_action.isChecked():
+            return
+        self._nfz_proximity_monitor.check(state, self._nfz_manager.zones())
+        result = self._nfz_proximity_monitor.last_result()
+        if result is not None and result[1] <= DEFAULT_THRESHOLD_M:
+            zone, distance = result
+            self.statusBar().showMessage(
+                i18n.tr("status_nfz_proximity_warning", name=zone.name, distance=f"{distance:.0f}")
+            )
 
     def _on_connection_changed(self, connected: bool) -> None:
         self.statusBar().showMessage(i18n.tr("status_connected" if connected else "status_disconnected"))

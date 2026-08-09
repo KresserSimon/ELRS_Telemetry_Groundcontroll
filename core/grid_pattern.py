@@ -18,25 +18,11 @@ from __future__ import annotations
 import math
 from typing import Callable, List, Optional, Tuple
 
-from core.geo import EARTH_RADIUS_M
+from core.geo import meters_per_degree, to_local_latlon, to_local_xy
 from core.route import Waypoint
 
 Segment = Tuple[float, float, float, float]
 ClipFn = Callable[[float, float, float, float], Optional[Segment]]
-
-
-def _meters_per_degree(lat0_deg: float) -> Tuple[float, float]:
-    m_per_deg_lat = math.radians(1.0) * EARTH_RADIUS_M
-    m_per_deg_lon = math.radians(1.0) * EARTH_RADIUS_M * math.cos(math.radians(lat0_deg))
-    return m_per_deg_lat, m_per_deg_lon
-
-
-def _to_local_xy(lat: float, lon: float, lat0: float, lon0: float, m_lat: float, m_lon: float) -> Tuple[float, float]:
-    return (lon - lon0) * m_lon, (lat - lat0) * m_lat
-
-
-def _to_latlon(x: float, y: float, lat0: float, lon0: float, m_lat: float, m_lon: float) -> Tuple[float, float]:
-    return lat0 + y / m_lat, lon0 + x / m_lon
 
 
 def _rotate(x: float, y: float, cos_a: float, sin_a: float) -> Tuple[float, float]:
@@ -153,9 +139,9 @@ def generate_grid_route(
     if corners is not None:
         (lat1, lon1), (lat2, lon2) = corners
         lat0, lon0 = (lat1 + lat2) / 2, (lon1 + lon2) / 2
-        m_lat, m_lon = _meters_per_degree(lat0)
-        x1, y1 = _to_local_xy(lat1, lon1, lat0, lon0, m_lat, m_lon)
-        x2, y2 = _to_local_xy(lat2, lon2, lat0, lon0, m_lat, m_lon)
+        m_lat, m_lon = meters_per_degree(lat0)
+        x1, y1 = to_local_xy(lat1, lon1, lat0, lon0, m_lat, m_lon)
+        x2, y2 = to_local_xy(lat2, lon2, lat0, lon0, m_lat, m_lon)
         x_min, x_max = min(x1, x2), max(x1, x2)
         y_min, y_max = min(y1, y2), max(y1, y2)
         if x_max - x_min < 1 or y_max - y_min < 1:
@@ -170,7 +156,7 @@ def generate_grid_route(
         if radius_m <= 0:
             raise ValueError("Der Radius muss größer als 0 sein.")
         lat0, lon0 = center
-        m_lat, m_lon = _meters_per_degree(lat0)
+        m_lat, m_lon = meters_per_degree(lat0)
         lines = _candidate_lines(-radius_m, radius_m, -radius_m, radius_m, spacing_m, angle_deg)
 
         def clip_fn(x0: float, y0: float, x1_: float, y1_: float) -> Optional[Segment]:
@@ -184,6 +170,6 @@ def generate_grid_route(
         raise ValueError("Für diese Parameter wurde keine Route erzeugt - Zeilenabstand/Gebiet prüfen.")
 
     return [
-        Waypoint(*_to_latlon(x, y, lat0, lon0, m_lat, m_lon), alt=altitude_m)
+        Waypoint(*to_local_latlon(x, y, lat0, lon0, m_lat, m_lon), alt=altitude_m)
         for x, y in local_points
     ]

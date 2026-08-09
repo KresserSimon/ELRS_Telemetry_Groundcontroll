@@ -89,6 +89,8 @@ _STRINGS = {
         "msgbox_openaip_no_position_body": "Für den Download wird eine Position benötigt - entweder ein aktueller GPS-Fix oder eine gespeicherte Home-Position (Einstellungen -> Home-Position...).",
         "msgbox_openaip_failed_title": "Download fehlgeschlagen",
         "status_openaip_loaded": "{count} Luftraumzonen von OpenAIP geladen",
+        "menu_nfz_proximity": "Distanz-Warnung aktivieren (50m)",
+        "status_nfz_proximity_warning": "Achtung: {name} in {distance} m Entfernung",
         "nfz_geojson_filter": "GeoJSON-Datei (*.geojson *.json)",
         "msgbox_nfz_import_failed_title": "Import fehlgeschlagen",
         "status_nfz_imported": "{count} Sperrzonen geladen",
@@ -271,6 +273,7 @@ _STRINGS = {
         "conn_plan_btn": "Plan-Modus starten",
         "tts_low": "Warnung. Akkuspannung niedrig.",
         "tts_critical": "Warnung. Akku kritisch niedrig. Bitte sofort landen.",
+        "tts_nfz_proximity": "Achtung, Sperrzone nähert sich.",
     },
     "en": {
         "menu_file": "&File",
@@ -347,6 +350,8 @@ _STRINGS = {
         "msgbox_openaip_no_position_body": "A position is needed for the download - either a current GPS fix or a saved home position (Settings -> Home Position...).",
         "msgbox_openaip_failed_title": "Download Failed",
         "status_openaip_loaded": "{count} airspace zones loaded from OpenAIP",
+        "menu_nfz_proximity": "Enable Distance Warning (50m)",
+        "status_nfz_proximity_warning": "Warning: {name} at {distance} m distance",
         "nfz_geojson_filter": "GeoJSON File (*.geojson *.json)",
         "msgbox_nfz_import_failed_title": "Import Failed",
         "status_nfz_imported": "{count} no-fly zones loaded",
@@ -529,6 +534,7 @@ _STRINGS = {
         "conn_plan_btn": "Start Plan Mode",
         "tts_low": "Warning. Battery voltage low.",
         "tts_critical": "Warning. Battery critically low. Land immediately.",
+        "tts_nfz_proximity": "Warning, no-fly zone approaching.",
     },
 }
 

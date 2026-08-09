@@ -1,11 +1,9 @@
 import math
 import unittest
 
-from core.grid_pattern import (
-    _meters_per_degree,
-    _to_local_xy,
-    generate_grid_route,
-)
+from core.geo import meters_per_degree as _meters_per_degree
+from core.geo import to_local_xy as _to_local_xy
+from core.grid_pattern import generate_grid_route
 
 # ~48.10..48.10+dlat, 11.50..11.50+dlon spans roughly 500m x 330m at this latitude.
 LAT0, LON0 = 48.10, 11.50
