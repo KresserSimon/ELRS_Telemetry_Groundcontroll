@@ -136,6 +136,7 @@ class MainWindow(QMainWindow):
         self._battery_cells = args.cells
         self._battery_low_v = args.low_cell_voltage
         self._battery_critical_v = args.critical_cell_voltage
+        self._battery_capacity_mah = 1300
 
         home_position = load_home_position()
         home_lat, home_lon = home_position if home_position is not None else (None, None)
@@ -784,7 +785,8 @@ class MainWindow(QMainWindow):
 
     def _open_battery_settings(self) -> None:
         dialog = BatterySettingsDialog(
-            self._battery_chemistry, self._battery_cells, self._battery_low_v, self._battery_critical_v, self
+            self._battery_chemistry, self._battery_cells, self._battery_low_v, self._battery_critical_v,
+            capacity_mah=self._battery_capacity_mah, parent=self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -793,6 +795,7 @@ class MainWindow(QMainWindow):
         self._battery_cells = dialog.cells()
         self._battery_low_v = dialog.low_cell_voltage()
         self._battery_critical_v = dialog.critical_cell_voltage()
+        self._battery_capacity_mah = dialog.capacity_mah()
         self._battery_monitor.configure(self._battery_cells, self._battery_low_v, self._battery_critical_v)
 
     def _open_map_performance_settings(self) -> None:
@@ -825,6 +828,7 @@ class MainWindow(QMainWindow):
             battery_cells=self._battery_cells,
             battery_low_v=self._battery_low_v,
             battery_critical_v=self._battery_critical_v,
+            battery_capacity_mah=self._battery_capacity_mah,
             dashboard_visible_fields=sorted(self._dashboard.visible_fields()),
             dashboard_group_order=self._dashboard.group_order(),
             dashboard_rows=self._dashboard.rows(),
@@ -840,6 +844,7 @@ class MainWindow(QMainWindow):
         self._battery_cells = profile.battery_cells
         self._battery_low_v = profile.battery_low_v
         self._battery_critical_v = profile.battery_critical_v
+        self._battery_capacity_mah = profile.battery_capacity_mah
         self._battery_monitor.configure(self._battery_cells, self._battery_low_v, self._battery_critical_v)
 
         visible_fields = set(profile.dashboard_visible_fields)

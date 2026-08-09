@@ -21,6 +21,7 @@ class ModelProfile:
     battery_cells: int = 4
     battery_low_v: float = 3.5
     battery_critical_v: float = 3.3
+    battery_capacity_mah: int = 1300
     dashboard_visible_fields: List[str] = field(default_factory=list)
     dashboard_group_order: List[str] = field(default_factory=list)
     dashboard_rows: int = 1

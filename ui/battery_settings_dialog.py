@@ -22,7 +22,7 @@ from core import i18n
 
 class BatterySettingsDialog(QDialog):
     def __init__(self, chemistry: str, cells: int, low_cell_voltage: float,
-                 critical_cell_voltage: float, parent=None) -> None:
+                 critical_cell_voltage: float, capacity_mah: int = 1300, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(i18n.tr("battery_dialog_title"))
 
@@ -52,9 +52,15 @@ class BatterySettingsDialog(QDialog):
         self._critical_spin.setSingleStep(0.05)
         self._critical_spin.setSuffix(" V")
         self._critical_spin.setValue(critical_cell_voltage)
+        self._capacity_spin = QSpinBox()
+        self._capacity_spin.setRange(50, 50000)
+        self._capacity_spin.setSingleStep(50)
+        self._capacity_spin.setSuffix(" mAh")
+        self._capacity_spin.setValue(capacity_mah)
         form.addRow(i18n.tr("battery_cells_label"), self._cells_spin)
         form.addRow(i18n.tr("battery_low_label"), self._low_spin)
         form.addRow(i18n.tr("battery_critical_label"), self._critical_spin)
+        form.addRow(i18n.tr("battery_capacity_label"), self._capacity_spin)
 
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self.accept)
@@ -88,3 +94,6 @@ class BatterySettingsDialog(QDialog):
 
     def critical_cell_voltage(self) -> float:
         return self._critical_spin.value()
+
+    def capacity_mah(self) -> int:
+        return self._capacity_spin.value()
