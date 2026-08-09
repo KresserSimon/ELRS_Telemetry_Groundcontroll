@@ -26,6 +26,7 @@ import urllib.request
 from typing import List, Optional, Set
 
 from core.nfz import NoFlyZone
+from core.openaip_cache import get_cached_geojson, store_geojson
 from export.nfz_import import polygon_rings_from_geometry
 
 DEFAULT_BASE_URL = "https://api.core.openaip.net/api/airspaces"
@@ -72,7 +73,13 @@ def fetch_airspaces_geojson(base_url: str, api_key: str, lat: float, lon: float)
     - OpenAIP's plain REST list endpoint returns {"items": [...]} with each
     item already carrying a GeoJSON `geometry`, so that shape is wrapped
     into a FeatureCollection too rather than requiring two code paths
-    downstream."""
+    downstream.
+
+    A successful fetch is cached to disk (core/openaip_cache.py) for this
+    region; if the request fails (typically: no network), a previously
+    cached response for the same region is returned instead of raising, so
+    zones already downloaded once keep showing up offline. Only raises
+    when there is no cached fallback either."""
     url = _build_url(base_url, api_key, lat, lon)
     headers = {"x-openaip-api-key": api_key} if api_key else {}
     request = urllib.request.Request(url, headers=headers)
@@ -80,20 +87,30 @@ def fetch_airspaces_geojson(base_url: str, api_key: str, lat: float, lon: float)
         with urllib.request.urlopen(request, timeout=_TIMEOUT_S) as response:
             data = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, OSError) as exc:
+        cached = get_cached_geojson(base_url, lat, lon)
+        if cached is not None:
+            return cached
         raise OpenAipError(f"Luftraumdaten konnten nicht abgerufen werden: {exc}") from exc
     except json.JSONDecodeError as exc:
+        cached = get_cached_geojson(base_url, lat, lon)
+        if cached is not None:
+            return cached
         raise OpenAipError(f"Ungültige Antwort vom Luftraum-Dienst: {exc}") from exc
 
     if isinstance(data, dict) and data.get("type") == "FeatureCollection":
-        return data
-    if isinstance(data, dict) and isinstance(data.get("items"), list):
+        geojson = data
+    elif isinstance(data, dict) and isinstance(data.get("items"), list):
         features = [
             {"type": "Feature", "geometry": item.get("geometry"), "properties": item}
             for item in data["items"]
             if item.get("geometry")
         ]
-        return {"type": "FeatureCollection", "features": features}
-    raise OpenAipError("Unerwartetes Antwortformat vom Luftraum-Dienst.")
+        geojson = {"type": "FeatureCollection", "features": features}
+    else:
+        raise OpenAipError("Unerwartetes Antwortformat vom Luftraum-Dienst.")
+
+    store_geojson(base_url, lat, lon, geojson)
+    return geojson
 
 
 def _feature_type_code(properties: dict) -> str:

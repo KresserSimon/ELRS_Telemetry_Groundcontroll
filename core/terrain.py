@@ -2,6 +2,11 @@
 routes - uses the free Open-Elevation public API (no API key needed), the
 same "assume internet is reachable for map data" assumption the app already
 makes for its OSM/Esri tile layers.
+
+Results are cached to disk (core/elevation_cache.py): a point already
+looked up once is served from the cache without a network round-trip, so a
+route re-checked or re-opened later keeps working even fully offline, and
+only genuinely new points require a live request when one succeeds.
 """
 from __future__ import annotations
 
@@ -10,6 +15,7 @@ import urllib.error
 import urllib.request
 from typing import List, Optional, Tuple
 
+from core.elevation_cache import cache_key, load_elevation_cache, save_elevation_cache
 from core.route import Waypoint
 
 _API_URL = "https://api.open-elevation.com/api/v1/lookup"
@@ -23,11 +29,7 @@ class TerrainLookupError(RuntimeError):
     silently as "safe"."""
 
 
-def fetch_elevations(points: List[Tuple[float, float]]) -> List[float]:
-    """Return MSL elevation in metres for each (lat, lon) point, in order."""
-    if not points:
-        return []
-
+def _fetch_elevations_online(points: List[Tuple[float, float]]) -> List[float]:
     elevations: List[float] = []
     for start in range(0, len(points), _BATCH_SIZE):
         chunk = points[start:start + _BATCH_SIZE]
@@ -54,6 +56,30 @@ def fetch_elevations(points: List[Tuple[float, float]]) -> List[float]:
             raise TerrainLookupError(f"Unerwartete Antwort vom Höhendaten-Dienst: {exc}") from exc
 
     return elevations
+
+
+def fetch_elevations(points: List[Tuple[float, float]]) -> List[float]:
+    """Return MSL elevation in metres for each (lat, lon) point, in order.
+
+    Cache-first: only points missing from the disk cache trigger a network
+    request. If every point is already cached, this returns without any
+    network access at all - fully offline. If some points are missing and
+    the network request fails, this raises TerrainLookupError exactly as
+    before the cache existed (never fabricates missing data)."""
+    if not points:
+        return []
+
+    cache = load_elevation_cache()
+    keys = [cache_key(lat, lon) for lat, lon in points]
+    missing = [i for i, key in enumerate(keys) if key not in cache]
+
+    if missing:
+        fetched = _fetch_elevations_online([points[i] for i in missing])
+        for i, elevation in zip(missing, fetched):
+            cache[keys[i]] = elevation
+        save_elevation_cache(cache)
+
+    return [cache[key] for key in keys]
 
 
 def route_elevation_profile(
