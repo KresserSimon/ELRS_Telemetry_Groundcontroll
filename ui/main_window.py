@@ -302,9 +302,11 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- menu
 
     def _build_menu(self) -> None:
-        # 8 top-level menus grouped by purpose (Datei | Route & Planung |
-        # Sperrzonen | Anzeige & Karte | Telemetrie & Hardware | Tools &
-        # Simulation | Einstellungen | Hilfe). A few QActions are
+        # 7 top-level menus grouped by purpose (Datei | Route & Planung |
+        # Anzeige & Karte | Telemetrie & Hardware | Tools & Simulation |
+        # Einstellungen | Hilfe). Sperrzonen lives as a submenu inside
+        # "Anzeige & Karte" rather than its own top-level menu, since it's
+        # fundamentally a map-display concern. A few QActions are
         # intentionally constructed in one menu's section and then also
         # added to another menu later in this method via menu.addAction() -
         # that's the *same* QAction object appearing in two places, not a
@@ -371,8 +373,13 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((grid_pattern_action, "menu_grid_pattern"))
         grid_pattern_action.triggered.connect(self._open_grid_pattern)
 
-        # --------------------------------------------------------- Sperrzonen
-        nfz_menu = menu.addMenu("")
+        # ----------------------------------------------- Anzeige & Karte
+        view_map_menu = menu.addMenu("")
+        self._i18n_menus.append((view_map_menu, "menu_map"))
+
+        # Sperrzonen lives as a submenu here (not its own top-level menu)
+        # since it's fundamentally a map-display concern.
+        nfz_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((nfz_menu, "menu_nfz"))
 
         import_nfz_action = nfz_menu.addAction("")
@@ -399,9 +406,7 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((openaip_load_action, "menu_nfz_openaip_load"))
         openaip_load_action.triggered.connect(self._load_openaip_zones)
 
-        # ----------------------------------------------- Anzeige & Karte
-        view_map_menu = menu.addMenu("")
-        self._i18n_menus.append((view_map_menu, "menu_map"))
+        view_map_menu.addSeparator()
 
         layer_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((layer_menu, "menu_map_layer"))

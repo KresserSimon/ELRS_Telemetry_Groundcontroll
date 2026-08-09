@@ -23,6 +23,26 @@ CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DISK_CACHE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB, per the offline-tile-cache sizing goal
 POSITION_UPDATE_INTERVAL_MS = 200  # throttle JS map updates to max 5 Hz
 DEFAULT_PATH_POINT_THRESHOLD_M = 1.5
+_PROFILE_STORAGE_NAME = "elrs_ground_station_map"
+
+_shared_profile: Optional[QWebEngineProfile] = None
+
+
+def _get_shared_profile() -> QWebEngineProfile:
+    # A plain self.page().profile() is an anonymous, off-the-record profile
+    # whose HTTP cache always stays in-memory regardless of
+    # setHttpCacheType() - only an explicitly named (persistent) profile
+    # actually keeps a disk-backed cache across launches. That name must
+    # stay a single shared instance rather than one-per-MapWidget: two
+    # QWebEngineProfile objects pointed at the same persistent storage name
+    # at once (e.g. transiently, while an old window is being torn down)
+    # contend over the same on-disk cache and can stall page loads.
+    global _shared_profile
+    if _shared_profile is None:
+        _shared_profile = QWebEngineProfile(_PROFILE_STORAGE_NAME)
+        _shared_profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+        _shared_profile.setHttpCacheMaximumSize(DISK_CACHE_MAX_BYTES)
+    return _shared_profile
 
 
 class MapWidget(QWebEngineView):
@@ -32,14 +52,7 @@ class MapWidget(QWebEngineView):
         self._overlays: list = []  # [[widget, corner], ...]
         self._pending_position: Optional[tuple] = None
 
-        # A plain self.page().profile() is an anonymous, off-the-record
-        # profile whose HTTP cache always stays in-memory regardless of
-        # setHttpCacheType() - only an explicitly named (persistent) profile
-        # actually keeps a disk-backed cache across launches, which is what
-        # the 500MB disk cache setting below is for.
-        self._profile = QWebEngineProfile("elrs_ground_station_map", self)
-        self._profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
-        self._profile.setHttpCacheMaximumSize(DISK_CACHE_MAX_BYTES)
+        self._profile = _get_shared_profile()
         self.setPage(QWebEnginePage(self._profile, self))
 
         self.route_bridge = RouteBridge()
