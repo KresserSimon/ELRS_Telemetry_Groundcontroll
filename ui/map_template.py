@@ -28,7 +28,8 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 <script>__LEAFLET_JS__</script>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <style>
-  html, body, #map { height: 100%; margin: 0; padding: 0; background: #1b1f24; cursor: default; }
+  html, body { height: 100%; margin: 0; padding: 0; background: #1b1f24; cursor: default; overflow: hidden; }
+  #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; margin: 0; cursor: default; }
   #map.route-mode { cursor: crosshair; }
   .drone-icon {
     width: 22px; height: 22px;
@@ -274,6 +275,42 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     counterRotatedMarkers.forEach(applyCounterRotation);
   }
 
+  // Rotating the Leaflet container while it exactly fills the viewport (its
+  // normal north-up size) clips its corners out of view at any non-zero
+  // angle, exposing the page background behind them - visually "the whole
+  // picture rotates" instead of "the map rotates within the picture".
+  // Fixed by oversizing the container to the viewport's diagonal (the one
+  // size that stays big enough to cover every corner at *any* rotation
+  // angle) and centering it exactly over the viewport before rotating it -
+  // this only needs recomputing when heading-up mode toggles on/off or the
+  // window resizes, not on every heading update, since the oversize itself
+  // doesn't depend on the current angle.
+  function fitMapContainer() {
+    var container = map.getContainer();
+    if (headingUp) {
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var diag = Math.ceil(Math.sqrt(vw * vw + vh * vh));
+      container.style.width = diag + 'px';
+      container.style.height = diag + 'px';
+      container.style.top = '50%';
+      container.style.left = '50%';
+      container.style.marginTop = (-diag / 2) + 'px';
+      container.style.marginLeft = (-diag / 2) + 'px';
+    } else {
+      container.style.width = '100%';
+      container.style.height = '100%';
+      container.style.top = '0';
+      container.style.left = '0';
+      container.style.marginTop = '0';
+      container.style.marginLeft = '0';
+    }
+    map.invalidateSize();
+  }
+
+  window.addEventListener('resize', function () {
+    if (headingUp) { fitMapContainer(); }
+  });
+
   function setMapRotation(deg) {
     mapRotationDeg = deg || 0;
     var container = map.getContainer();
@@ -284,6 +321,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
   function setHeadingMode(enabled) {
     headingUp = enabled;
+    fitMapContainer();
     setMapRotation(enabled ? (lastHeading || 0) : 0);
   }
 
