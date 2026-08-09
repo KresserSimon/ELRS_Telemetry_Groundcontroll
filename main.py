@@ -18,8 +18,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--demo", action="store_true", help="Im Simulationsmodus starten (keine Hardware noetig)")
     parser.add_argument("--protocol", choices=["mavlink", "crsf"], default="mavlink",
                          help="Telemetrieprotokoll (Standard: mavlink)")
-    parser.add_argument("--lang", choices=["de", "en"], default="de",
-                         help="UI-Sprache (auch zur Laufzeit ueber Menue -> Sprache umschaltbar)")
+    parser.add_argument("--lang", choices=["de", "en"], default=None,
+                         help="UI-Sprache (Standard: zuletzt gespeicherte Sprache, sonst Deutsch; "
+                              "auch zur Laufzeit ueber Menue -> Sprache umschaltbar)")
 
     parser.add_argument("--connection", choices=["udp", "usb"], default="udp",
                          help="Transportweg: 'udp' fuer WiFi-Bridge, 'usb' fuer direkte USB/seriell-Verbindung")

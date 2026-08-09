@@ -21,6 +21,7 @@ BORDER = "#0d1117"
 class TrackOverlay(DraggableOverlay):
     start_pause_clicked = pyqtSignal()
     export_clicked = pyqtSignal()
+    auto_toggled = pyqtSignal(bool)
 
     MIN_WIDTH = 160
     MIN_HEIGHT = 110
@@ -61,6 +62,7 @@ class TrackOverlay(DraggableOverlay):
 
         self._auto_checkbox = QCheckBox()
         self._auto_checkbox.setStyleSheet("color: #c7cfda; font-size: 10px; background: transparent;")
+        self._auto_checkbox.toggled.connect(self.auto_toggled)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -84,6 +86,9 @@ class TrackOverlay(DraggableOverlay):
 
     def is_auto_enabled(self) -> bool:
         return self._auto_checkbox.isChecked()
+
+    def set_auto_enabled(self, enabled: bool) -> None:
+        self._auto_checkbox.setChecked(enabled)
 
     def retranslate(self) -> None:
         self._title_label.setText(i18n.tr("track_title"))

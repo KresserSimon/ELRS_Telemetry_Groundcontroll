@@ -36,6 +36,7 @@ from core.resources import resource_path
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
 from core.tracker_output import TrackerOutputSender
+from core.ui_state_config import load_ui_state, save_ui_state
 from export.flight_logger import ALL_FIELDS, FlightLogger
 from export.nfz_import import import_nfz_file
 from export.route_export import export_route_csv, export_route_gpx
@@ -89,11 +90,21 @@ HORIZON_SCALES = (
 DEFAULT_HORIZON_SCALE = 1.0
 
 
+def _resize_from_saved(widget, size) -> None:
+    """Apply a [width, height] pair loaded from ui_state.json, if present
+    and well-formed - leaves the widget at its own constructor default
+    otherwise."""
+    if isinstance(size, list) and len(size) == 2 and all(isinstance(v, (int, float)) for v in size):
+        widget.resize(int(size[0]), int(size[1]))
+
+
 class MainWindow(QMainWindow):
     def __init__(self, args) -> None:
         super().__init__()
         self._args = args
-        i18n.set_language(getattr(args, "lang", "de"))
+        self._ui_state = load_ui_state()
+        lang = getattr(args, "lang", None) or self._ui_state.get("language") or "de"
+        i18n.set_language(lang)
 
         self.setWindowTitle("ELRS Ground Station")
         self.resize(1200, 800)
@@ -123,7 +134,8 @@ class MainWindow(QMainWindow):
         self._map = MapWidget(home_lat=home_lat, home_lon=home_lon)
         self._dashboard = Dashboard()
         self._horizon = HorizonWidget()
-        self._map.add_overlay(self._horizon, DEFAULT_HORIZON_CORNER)
+        self._horizon.set_scale(self._ui_state.get("horizon_scale", DEFAULT_HORIZON_SCALE))
+        self._map.add_overlay(self._horizon, self._ui_state.get("horizon_corner", DEFAULT_HORIZON_CORNER))
 
         self._route_manager = RouteManager()
         self._route_manager.changed.connect(self._on_route_changed)
@@ -135,6 +147,7 @@ class MainWindow(QMainWindow):
 
         self._route_overlay = RouteEditorOverlay()
         self._route_overlay.waypoints_edited.connect(self._route_manager.set_all)
+        _resize_from_saved(self._route_overlay, self._ui_state.get("route_editor_size"))
         self._map.add_overlay(self._route_overlay, "bottom-left")
 
         self._track_recording = False
@@ -142,10 +155,17 @@ class MainWindow(QMainWindow):
         self._track_overlay = TrackOverlay()
         self._track_overlay.start_pause_clicked.connect(self._toggle_track_recording)
         self._track_overlay.export_clicked.connect(self._export_track_prompt)
+        # Auto-start track recording once the model moves defaults to ON,
+        # unlike every other toggle here which defaults to its previous
+        # off/on state - matches the explicit "Tracking soll standardmaessig
+        # aktiv sein" requirement.
+        self._track_overlay.set_auto_enabled(self._ui_state.get("track_auto", True))
+        _resize_from_saved(self._track_overlay, self._ui_state.get("track_overlay_size"))
         self._map.add_overlay(self._track_overlay, "top-left")
 
         self._altitude_track_start = None
         self._altitude_track_overlay = AltitudeTrackOverlay()
+        _resize_from_saved(self._altitude_track_overlay, self._ui_state.get("altitude_track_size"))
         self._map.add_overlay(self._altitude_track_overlay, "top-left")
 
         self._lock_button = LockButton()
@@ -188,13 +208,62 @@ class MainWindow(QMainWindow):
         self._build_menu()
         i18n.on_language_changed(self._retranslate_menu)
 
-        # The menu action's toggled signal is connected above, but that
-        # connection postdates its own initial setChecked(True) - sync the
-        # button's display explicitly so it doesn't start out looking
-        # unlocked while auto-center is actually on.
+        # Every menu action's toggled signal is connected *after* its own
+        # initial setChecked() call above (so constructing the menu never
+        # fires side effects on a not-yet-fully-built window) - which means
+        # a loaded-from-disk checked state never actually reached the real
+        # behavior it controls. Apply all of it explicitly now that
+        # everything exists and every signal is wired.
         self._lock_button.set_locked(self._auto_center_action.isChecked())
         self._heading_button.set_heading_up(self._heading_mode_action.isChecked())
         self._dashboard.resized.connect(self._fit_docked_horizon)
+
+        # These all end up calling page().runJavaScript() on the map, which
+        # is a silent no-op if the page hasn't finished loading yet - true
+        # at this exact point in startup. Unlike updateDrone()/clearPath()
+        # (called repeatedly on every telemetry tick, so an early miss
+        # self-heals moments later), these are one-shot: a dropped call
+        # here would leave the JS side permanently out of sync with the
+        # restored Python-side state. Defer them to loadFinished instead.
+        def _apply_initial_map_js_state(ok: bool) -> None:
+            self._map.set_auto_center(self._auto_center_action.isChecked())
+            self._apply_heading_mode(self._heading_mode_action.isChecked())
+            self._map.set_coord_overlay_visible(self._coord_overlay_action.isChecked())
+            self._map.set_heatmap_enabled(self._heatmap_action.isChecked())
+            self._map.set_nfz_visible(self._nfz_visible_action.isChecked())
+            self._map.set_base_layer(self._ui_state.get("base_layer", "osm"))
+            self._map.set_vehicle_type(self._ui_state.get("vehicle_type", "quad"))
+
+        self._map.page().loadFinished.connect(_apply_initial_map_js_state)
+        self._horizon.setVisible(self._horizon_toggle_action.isChecked())
+        self._route_overlay.setVisible(self._route_editor_action.isChecked())
+        self._track_overlay.setVisible(self._track_overlay_action.isChecked())
+        self._altitude_track_overlay.setVisible(self._altitude_track_action.isChecked())
+        if self._horizon_dock_action.isChecked():
+            self._set_horizon_docked(True)
+        if self._altitude_track_dock_action.isChecked():
+            self._set_altitude_track_docked(True)
+        if self._route_editor_dock_action.isChecked():
+            self._set_route_editor_docked(True)
+
+        # Persist every menu/view toggle immediately on change (matching
+        # every other config file in this app); overlay sizes only change
+        # via continuous mouse-drag ticks, so those are captured once in
+        # closeEvent() instead of on every pixel of movement.
+        for action in (
+            self._auto_center_action, self._heading_mode_action, self._coord_overlay_action,
+            self._heatmap_action, self._nfz_visible_action, self._nfz_proximity_action,
+            self._horizon_toggle_action, self._horizon_dock_action, self._route_editor_action,
+            self._route_editor_dock_action, self._track_overlay_action,
+            self._altitude_track_action, self._altitude_track_dock_action,
+        ):
+            action.toggled.connect(self._persist_ui_state)
+        self._layer_group.triggered.connect(self._persist_ui_state)
+        self._vehicle_group.triggered.connect(self._persist_ui_state)
+        self._horizon_pos_group.triggered.connect(self._persist_ui_state)
+        self._horizon_scale_group.triggered.connect(self._persist_ui_state)
+        self._lang_group.triggered.connect(self._persist_ui_state)
+        self._track_overlay.auto_toggled.connect(self._persist_ui_state)
 
         self._last_telemetry_time = 0.0
         self._has_fix = False
@@ -258,14 +327,14 @@ class MainWindow(QMainWindow):
         self._route_editor_action = route_menu.addAction("")
         self._i18n_actions.append((self._route_editor_action, "menu_route_edit"))
         self._route_editor_action.setCheckable(True)
-        self._route_editor_action.setChecked(True)
+        self._route_editor_action.setChecked(self._ui_state.get("route_editor_visible", True))
         self._route_editor_action.toggled.connect(self._route_overlay.setVisible)
         self._route_overlay.closed.connect(lambda: self._route_editor_action.setChecked(False))
 
         self._route_editor_dock_action = route_menu.addAction("")
         self._i18n_actions.append((self._route_editor_dock_action, "menu_route_edit_dock"))
         self._route_editor_dock_action.setCheckable(True)
-        self._route_editor_dock_action.setChecked(False)
+        self._route_editor_dock_action.setChecked(self._ui_state.get("route_editor_docked", False))
         self._route_editor_dock_action.toggled.connect(self._set_route_editor_docked)
 
         route_menu.addSeparator()
@@ -293,13 +362,13 @@ class MainWindow(QMainWindow):
         self._nfz_visible_action = nfz_menu.addAction("")
         self._i18n_actions.append((self._nfz_visible_action, "menu_map_nfz_visible"))
         self._nfz_visible_action.setCheckable(True)
-        self._nfz_visible_action.setChecked(True)
+        self._nfz_visible_action.setChecked(self._ui_state.get("nfz_visible", True))
         self._nfz_visible_action.toggled.connect(self._map.set_nfz_visible)
 
         self._nfz_proximity_action = nfz_menu.addAction("")
         self._i18n_actions.append((self._nfz_proximity_action, "menu_nfz_proximity"))
         self._nfz_proximity_action.setCheckable(True)
-        self._nfz_proximity_action.setChecked(False)
+        self._nfz_proximity_action.setChecked(self._ui_state.get("nfz_proximity", False))
 
         nfz_menu.addSeparator()
         openaip_settings_action = nfz_menu.addAction("")
@@ -323,7 +392,7 @@ class MainWindow(QMainWindow):
             self._i18n_actions.append((action, key))
             action.setCheckable(True)
             action.setData(layer_id)
-            action.setChecked(layer_id == "osm")
+            action.setChecked(layer_id == self._ui_state.get("base_layer", "osm"))
             self._layer_group.addAction(action)
         self._layer_group.triggered.connect(lambda action: self._map.set_base_layer(action.data()))
 
@@ -332,14 +401,14 @@ class MainWindow(QMainWindow):
         self._auto_center_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._auto_center_action, "menu_view_auto_center"))
         self._auto_center_action.setCheckable(True)
-        self._auto_center_action.setChecked(True)
+        self._auto_center_action.setChecked(self._ui_state.get("auto_center", True))
         self._auto_center_action.toggled.connect(self._map.set_auto_center)
         self._auto_center_action.toggled.connect(self._lock_button.set_locked)
 
         self._heading_mode_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._heading_mode_action, "menu_view_heading_mode"))
         self._heading_mode_action.setCheckable(True)
-        self._heading_mode_action.setChecked(False)
+        self._heading_mode_action.setChecked(self._ui_state.get("heading_mode", False))
         self._heading_mode_action.toggled.connect(self._apply_heading_mode)
 
         jump_action = view_map_menu.addAction("")
@@ -353,32 +422,32 @@ class MainWindow(QMainWindow):
         self._coord_overlay_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._coord_overlay_action, "menu_view_coords"))
         self._coord_overlay_action.setCheckable(True)
-        self._coord_overlay_action.setChecked(False)
+        self._coord_overlay_action.setChecked(self._ui_state.get("coord_overlay", False))
         self._coord_overlay_action.toggled.connect(self._map.set_coord_overlay_visible)
 
         self._heatmap_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._heatmap_action, "menu_heatmap"))
         self._heatmap_action.setCheckable(True)
-        self._heatmap_action.setChecked(False)
+        self._heatmap_action.setChecked(self._ui_state.get("heatmap", False))
         self._heatmap_action.toggled.connect(self._map.set_heatmap_enabled)
 
         self._altitude_track_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._altitude_track_action, "menu_altitude_track"))
         self._altitude_track_action.setCheckable(True)
-        self._altitude_track_action.setChecked(True)
+        self._altitude_track_action.setChecked(self._ui_state.get("altitude_track_visible", True))
         self._altitude_track_action.toggled.connect(self._altitude_track_overlay.setVisible)
         self._altitude_track_overlay.closed.connect(lambda: self._altitude_track_action.setChecked(False))
 
         self._altitude_track_dock_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._altitude_track_dock_action, "menu_altitude_track_dock"))
         self._altitude_track_dock_action.setCheckable(True)
-        self._altitude_track_dock_action.setChecked(False)
+        self._altitude_track_dock_action.setChecked(self._ui_state.get("altitude_track_docked", False))
         self._altitude_track_dock_action.toggled.connect(self._set_altitude_track_docked)
 
         self._track_overlay_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._track_overlay_action, "menu_track_overlay"))
         self._track_overlay_action.setCheckable(True)
-        self._track_overlay_action.setChecked(True)
+        self._track_overlay_action.setChecked(self._ui_state.get("track_overlay_visible", True))
         self._track_overlay_action.toggled.connect(self._track_overlay.setVisible)
         self._track_overlay.closed.connect(lambda: self._track_overlay_action.setChecked(False))
 
@@ -391,21 +460,21 @@ class MainWindow(QMainWindow):
             self._i18n_actions.append((action, key))
             action.setCheckable(True)
             action.setData(vehicle_id)
-            action.setChecked(vehicle_id == "quad")
+            action.setChecked(vehicle_id == self._ui_state.get("vehicle_type", "quad"))
             self._vehicle_group.addAction(action)
         self._vehicle_group.triggered.connect(lambda action: self._map.set_vehicle_type(action.data()))
 
-        horizon_toggle_action = view_map_menu.addAction("")
-        self._i18n_actions.append((horizon_toggle_action, "menu_view_horizon_toggle"))
-        horizon_toggle_action.setCheckable(True)
-        horizon_toggle_action.setChecked(True)
-        horizon_toggle_action.toggled.connect(self._horizon.setVisible)
-        self._horizon.closed.connect(lambda: horizon_toggle_action.setChecked(False))
+        self._horizon_toggle_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._horizon_toggle_action, "menu_view_horizon_toggle"))
+        self._horizon_toggle_action.setCheckable(True)
+        self._horizon_toggle_action.setChecked(self._ui_state.get("horizon_visible", True))
+        self._horizon_toggle_action.toggled.connect(self._horizon.setVisible)
+        self._horizon.closed.connect(lambda: self._horizon_toggle_action.setChecked(False))
 
         self._horizon_dock_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._horizon_dock_action, "menu_horizon_dock"))
         self._horizon_dock_action.setCheckable(True)
-        self._horizon_dock_action.setChecked(False)
+        self._horizon_dock_action.setChecked(self._ui_state.get("horizon_docked", False))
         self._horizon_dock_action.toggled.connect(self._set_horizon_docked)
 
         horizon_pos_menu = view_map_menu.addMenu("")
@@ -417,7 +486,7 @@ class MainWindow(QMainWindow):
             self._i18n_actions.append((action, key))
             action.setCheckable(True)
             action.setData(corner)
-            action.setChecked(corner == DEFAULT_HORIZON_CORNER)
+            action.setChecked(corner == self._ui_state.get("horizon_corner", DEFAULT_HORIZON_CORNER))
             self._horizon_pos_group.addAction(action)
         self._horizon_pos_group.triggered.connect(
             lambda action: self._map.set_overlay_corner(self._horizon, action.data())
@@ -432,7 +501,7 @@ class MainWindow(QMainWindow):
             self._i18n_actions.append((action, key))
             action.setCheckable(True)
             action.setData(scale)
-            action.setChecked(scale == DEFAULT_HORIZON_SCALE)
+            action.setChecked(scale == self._ui_state.get("horizon_scale", DEFAULT_HORIZON_SCALE))
             self._horizon_scale_group.addAction(action)
         self._horizon_scale_group.triggered.connect(self._set_horizon_scale)
 
@@ -1163,10 +1232,46 @@ class MainWindow(QMainWindow):
 
     # -------------------------------------------------------------- close
 
+    def _gather_ui_state(self) -> dict:
+        layer_action = self._layer_group.checkedAction()
+        vehicle_action = self._vehicle_group.checkedAction()
+        horizon_pos_action = self._horizon_pos_group.checkedAction()
+        return {
+            "auto_center": self._auto_center_action.isChecked(),
+            "heading_mode": self._heading_mode_action.isChecked(),
+            "coord_overlay": self._coord_overlay_action.isChecked(),
+            "heatmap": self._heatmap_action.isChecked(),
+            "nfz_visible": self._nfz_visible_action.isChecked(),
+            "nfz_proximity": self._nfz_proximity_action.isChecked(),
+            "base_layer": layer_action.data() if layer_action is not None else "osm",
+            "vehicle_type": vehicle_action.data() if vehicle_action is not None else "quad",
+            "horizon_visible": self._horizon_toggle_action.isChecked(),
+            "horizon_docked": self._horizon_dock_action.isChecked(),
+            "horizon_corner": horizon_pos_action.data() if horizon_pos_action is not None else DEFAULT_HORIZON_CORNER,
+            "horizon_scale": self._horizon.scale(),
+            "route_editor_visible": self._route_editor_action.isChecked(),
+            "route_editor_docked": self._route_editor_dock_action.isChecked(),
+            "route_editor_size": [self._route_overlay.width(), self._route_overlay.height()],
+            "track_overlay_visible": self._track_overlay_action.isChecked(),
+            "track_overlay_size": [self._track_overlay.width(), self._track_overlay.height()],
+            "track_auto": self._track_overlay.is_auto_enabled(),
+            "altitude_track_visible": self._altitude_track_action.isChecked(),
+            "altitude_track_docked": self._altitude_track_dock_action.isChecked(),
+            "altitude_track_size": [self._altitude_track_overlay.width(), self._altitude_track_overlay.height()],
+            "language": i18n.get_language(),
+        }
+
+    def _persist_ui_state(self, *_args) -> None:
+        save_ui_state(self._gather_ui_state())
+
     def closeEvent(self, event) -> None:
         if self._worker is not None:
             self._worker.stop()
         self._flight_logger.stop()
         self._tts_worker.stop()
         self._tracker_output_sender.stop()
+        # Overlay sizes only change via continuous mouse-drag ticks, so
+        # rather than persisting on every pixel of movement, capture their
+        # final size here alongside everything else.
+        self._persist_ui_state()
         super().closeEvent(event)
