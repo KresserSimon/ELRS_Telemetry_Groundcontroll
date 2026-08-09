@@ -231,11 +231,42 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   var headingUp = false;
   var mapRotationDeg = 0;
 
+  // Markers that must stay upright/readable regardless of map rotation
+  // (home icon, waypoint number dots, segment distance labels) - the
+  // drone icon is handled separately in applyRotation() since it's
+  // supposed to actually show heading, not stay fixed. Counter-rotating
+  // the *inner* content element (not the Leaflet-managed marker wrapper
+  // itself, which already carries its own translate() for positioning -
+  // overwriting that would teleport the marker to the wrong spot) cancels
+  // out the container's rotation so the icon/text renders upright.
+  var counterRotatedMarkers = [];
+
+  function registerCounterRotated(marker) {
+    if (!marker) return;
+    counterRotatedMarkers.push(marker);
+    applyCounterRotation(marker);
+  }
+
+  function applyCounterRotation(marker) {
+    var el = marker.getElement && marker.getElement();
+    var child = el && el.firstElementChild;
+    if (child) { child.style.transform = 'rotate(' + mapRotationDeg + 'deg)'; }
+  }
+
+  function applyCounterRotationToAll() {
+    counterRotatedMarkers = counterRotatedMarkers.filter(function (m) {
+      var el = m.getElement && m.getElement();
+      return el && el.isConnected;
+    });
+    counterRotatedMarkers.forEach(applyCounterRotation);
+  }
+
   function setMapRotation(deg) {
     mapRotationDeg = deg || 0;
     var container = map.getContainer();
     container.style.transformOrigin = '50% 50%';
     container.style.transform = mapRotationDeg ? ('rotate(' + (-mapRotationDeg) + 'deg)') : '';
+    applyCounterRotationToAll();
   }
 
   function setHeadingMode(enabled) {
@@ -294,6 +325,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
     if (!hasCentered) {
       homeMarker = L.marker(latlng, { icon: homeIcon, zIndexOffset: -100 }).addTo(map);
+      registerCounterRotated(homeMarker);
       map.setView(latlng, __ZOOM__);
       hasCentered = true;
     } else if (autoCenter) {
@@ -383,6 +415,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
         if (routeBridge) { routeBridge.waypoint_marker_clicked(idx); }
       });
       routeMarkers.push(marker);
+      registerCounterRotated(marker);
 
       if (idx > 0 && wp.seg !== null && wp.seg !== undefined) {
         var prev = wps[idx - 1];
@@ -396,6 +429,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
         });
         var segLabel = L.marker([midLat, midLon], { icon: segIcon, interactive: false, zIndexOffset: 400 }).addTo(map);
         routeSegLabels.push(segLabel);
+        registerCounterRotated(segLabel);
       }
     });
     routeLine.setLatLngs(latlngs);
