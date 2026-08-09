@@ -187,6 +187,7 @@ class MainWindow(QMainWindow):
         # unlocked while auto-center is actually on.
         self._lock_button.set_locked(self._auto_center_action.isChecked())
         self._heading_button.set_heading_up(self._heading_mode_action.isChecked())
+        self._dashboard.resized.connect(self._fit_docked_horizon)
 
         self._last_telemetry_time = 0.0
         self._has_fix = False
@@ -853,10 +854,25 @@ class MainWindow(QMainWindow):
             self._map.remove_overlay(self._horizon)
             self._horizon.set_docked(True)
             self._dashboard.set_top_docked(self._horizon, True)
+            self._fit_docked_horizon()
         else:
             self._dashboard.set_top_docked(self._horizon, False)
             self._horizon.set_docked(False)
             self._map.add_overlay(self._horizon, DEFAULT_HORIZON_CORNER)
+
+    def _fit_docked_horizon(self) -> None:
+        """Scale the artificial horizon to the dashboard's current width
+        while it's docked there, instead of it staying at whatever small
+        fixed size it happened to have when docked - called on every
+        dashboard resize (see Dashboard.resized) as well as right after
+        docking."""
+        if not self._horizon.is_docked():
+            return
+        available = self._dashboard.width()
+        if self._altitude_track_dock_action.isChecked():
+            available //= 2
+        target = max(90, min(int(available * 0.3), 260))
+        self._horizon.request_resize(target, target)
 
     def _set_altitude_track_docked(self, docked: bool) -> None:
         if docked:

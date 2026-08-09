@@ -117,6 +117,9 @@ class DraggableOverlay(QWidget):
         self._resize_grip.setVisible(not docked)
         self.setCursor(Qt.CursorShape.ArrowCursor if docked else Qt.CursorShape.OpenHandCursor)
 
+    def is_docked(self) -> bool:
+        return self._docked
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._resize_grip.move(self.width() - _ResizeGrip.SIZE, self.height() - _ResizeGrip.SIZE)

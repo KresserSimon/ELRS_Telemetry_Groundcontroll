@@ -10,7 +10,7 @@ import math
 import time
 from typing import Dict, List
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QGroupBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from core import geo, i18n
@@ -87,12 +87,25 @@ class _Field(QWidget):
     def retranslate(self) -> None:
         self.caption_label.setText(i18n.tr(self.caption_key))
 
+    def set_centered(self, centered: bool) -> None:
+        # Left-aligned reads fine in a wide horizontal row, but in a narrow
+        # left/right-docked column it leaves a ragged strip of empty space
+        # next to every value - centering it there looks tidier.
+        align = Qt.AlignmentFlag.AlignHCenter if centered else Qt.AlignmentFlag.AlignLeft
+        self.caption_label.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+        self.value.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+
 
 DEFAULT_ROWS = 1
 MAX_ROWS = 4
 
 
 class Dashboard(QWidget):
+    # Emitted on every resize - MainWindow uses this to re-fit a docked
+    # artificial horizon (a fixed-aspect gauge that otherwise stays at
+    # whatever size it had when docked) to the panel's current width.
+    resized = pyqtSignal()
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -251,6 +264,7 @@ class Dashboard(QWidget):
         if icon_label is not None:
             new_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignHCenter if vertical else Qt.AlignmentFlag(0))
         for f in self._fields_by_box.get(box, []):
+            f.set_centered(vertical)
             new_layout.addWidget(f)
         box.setLayout(new_layout)
 
@@ -287,6 +301,10 @@ class Dashboard(QWidget):
         else:
             self._bottom_dock_layout.removeWidget(widget)
         self._bottom_dock_widget.setVisible(self._bottom_dock_layout.count() > 0)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.resized.emit()
 
     # ------------------------------------------------------- configuration
 
@@ -355,6 +373,18 @@ class Dashboard(QWidget):
                 w = item.widget()
                 if w is not None:
                     w.deleteLater()
+
+        if self._vertical and boxes:
+            # In a narrow docked column, boxes with different caption
+            # lengths end up different widths and look ragged side by
+            # side - pad every box's group to the widest one's natural
+            # width instead.
+            uniform_width = max(box.sizeHint().width() for box in boxes)
+            for box in boxes:
+                box.setMinimumWidth(uniform_width)
+        else:
+            for box in boxes:
+                box.setMinimumWidth(0)
 
         self._rows = max(1, min(rows, len(boxes) or 1))
         chunk_size = max(1, math.ceil(len(boxes) / self._rows)) if boxes else 1
