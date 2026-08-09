@@ -23,7 +23,10 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
   Strom/mAh und Min-Zellspannung), zusätzliche Sensoren (Vario, Baro-Höhe,
   RPM, Temperatur) und Long-Range-Werte (Geschwindigkeit, Entfernung/Peilung
   zur Home-Position, Flugzeit) – jedes einzelne Feld lässt sich ein-/aus-
-  blenden und wird als eigener Standard-Layout gespeichert.
+  blenden, Gruppen sind per Drag & Drop umsortierbar und auf 1–3 Zeilen
+  verteilbar, und das ganze Dashboard lässt sich oben, unten, links oder
+  rechts im Fenster andocken (als Fenster-Trennbalken frei in der Größe
+  verstellbar) – alles wird als persönlicher Standard gespeichert.
 - **Frei verschieb- und größenveränderbare Karten-Overlays** (künstlicher
   Horizont, Wegpunkt-Editor, Tracking-Aufzeichnung) – wie kleine Fenster
   direkt mit der Maus ziehen und über eine Ecken-Anfassmarke skalieren.
@@ -70,11 +73,51 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
   TBS Crossfire) und die Sprache der Oberfläche (Deutsch/Englisch).
 - **Demo-Modus** mit einer simulierten Flugbahn, um die App komplett ohne
   Modell oder ELRS-Hardware auszuprobieren.
+- **Höhenprofil der Route**: zeigt Gelände- und geplante Flughöhe entlang
+  der aktuellen Route als Diagramm, auf Basis derselben Geländehöhen-
+  Abfrage wie die Kollisionsprüfung im Wegpunkt-Editor.
+- **Grid-/Suchmuster-Generator**: erzeugt automatisch eine Zickzack-
+  Absuchroute aus zwei Eckpunkten oder Mittelpunkt+Radius, mit
+  einstellbarem Bahnabstand, Ausrichtung und Flughöhe.
+- **RSSI/LQ-Heatmap**: färbt den live geflogenen Pfad nach
+  Verbindungsqualität (grün/gelb/rot), ein-/ausblendbar.
+- **Sperrzonen-Distanzwarnung**: warnt per Sprachausgabe und Statusleiste,
+  sobald sich das Modell einer Sperrzone auf 50 m nähert.
+- **OpenAIP-Sperrzonen**: lädt Luftraumdaten (CTR, Sperrgebiete,
+  Restricted Areas etc.) für die aktuelle Home-Position direkt von
+  OpenAIP herunter und zeigt sie als Sperrzonen an – mit API-Key- und
+  Luftraumtyp-Auswahl im Einstellungsdialog.
+- **Antennen-Tracker-Ausgabe**: sendet die Live-Position als MAVLink
+  (`GLOBAL_POSITION_INT`) oder NMEA (`$GPGGA`) über seriell oder UDP an
+  einen externen Antennen-Tracker.
+- **Modell-Profile**: speichert/lädt benannte Profile mit Akku- und
+  Dashboard-Einstellungen, um zwischen mehreren Modellen schnell
+  umzuschalten.
 
 Funktioniert mit Flugsteuerungen (ArduPilot/Betaflight/iNav), die ihre
 Telemetrie per MAVLink ausgeben, ebenso wie mit dem rohen CRSF/TBS-Crossfire-
 Telemetriestrom direkt vom ELRS-Empfänger (ExpressLRS nutzt bewusst dasselbe
 CRSF-Frameformat wie TBS Crossfire).
+
+## Offline-Nutzung (Longrange ohne Internet)
+
+Die App ist für den Feldeinsatz gebaut, wo oft kein Internet zur Verfügung
+steht. Telemetrieempfang, Dashboard, künstlicher Horizont, Wegpunkt-
+Planung/-Editor, Sperrzonen-Anzeige und -Distanzwarnung, Sprachwarnungen,
+Fluglog, Track-Aufzeichnung, Antennen-Tracker-Ausgabe und Modell-Profile
+funktionieren vollständig **ohne** Internetverbindung – auch die Karte
+selbst (Leaflet) ist fest in die App eingebettet und lädt nicht mehr von
+einem CDN nach. Nur drei Dinge brauchen aktiv eine Verbindung und
+degradieren dann kontrolliert, statt die App zum Absturz zu bringen:
+
+- **Kartenkacheln** (OpenStreetMap/Satellit): ohne Internet bleibt der
+  Kartenhintergrund leer/grau, alle anderen Kartenfunktionen (Marker,
+  Routen, Sperrzonen, Rechtsklick-Menü) funktionieren trotzdem normal.
+- **Höhenprofil der Route** (Open-Elevation-Abfrage): schlägt die Abfrage
+  fehl, erscheint im Dialog eine Fehlermeldung statt eines Absturzes.
+- **OpenAIP-Sperrzonen laden**: schlägt der Download fehl, erscheint eine
+  Fehlermeldung in der Statusleiste; bereits geladene/importierte
+  Sperrzonen bleiben unberührt.
 
 ## Installation
 
@@ -128,80 +171,89 @@ von Verbindung (WiFi/UDP oder USB) und Protokoll (MAVLink oder CRSF) —
 Abbrechen übernimmt einfach die per Kommandozeile übergebenen/Standard-
 Einstellungen, ein zusätzlicher Button startet direkt den Demo-Modus.
 
-Im laufenden Programm:
+Im laufenden Programm ist die Menüleiste in acht Gruppen sortiert – Datei
+| Route & Planung | Sperrzonen | Anzeige & Karte | Telemetrie & Hardware |
+Tools & Simulation | Einstellungen | Hilfe:
+
 - **Datei → Flugpfad als GPX/KML exportieren** speichert alle bisher
   aufgezeichneten GPS-Punkte des aktuellen Fluges (alternativ das
   Tracking-Overlay auf der Karte, siehe unten, mit zusätzlicher
   CSV-Option).
-- **Route → Wegpunkt-Modus** schaltet den Klick-zum-Hinzufügen-Modus auf
-  der Karte ein; ein Klick auf einen bestehenden Wegpunkt entfernt ihn
-  wieder. **Route → Letzten Wegpunkt entfernen / Route löschen** für die
-  restliche Bearbeitung. Ein **Rechtsklick** auf die Karte öffnet jederzeit
-  (unabhängig vom Wegpunkt-Modus) ein Menü mit Wegpunkt/Startpunkt/
-  Endpunkt, "Als Home setzen" sowie einem "Ansicht"-Untermenü.
-- **Route → Wegpunkt-Editor anzeigen** blendet das Editor-Overlay auf der
-  Karte ein/aus (auch unter Einstellungen → Ansicht verfügbar) – zeigt
-  Wegpunktanzahl/Gesamtdistanz über einer bearbeitbaren Tabelle mit Höhe,
-  Name, INAV-Aktion, Geschwindigkeit und P1–P3; Änderungen wirken sofort,
-  kein Bestätigen nötig. Buttons darin exportieren/importieren die Route
-  als INAV-`.mission`-JSON und prüfen die Route gegen Geländehöhen (rot =
-  Kollision, gelb = knapp, grün = frei).
-- **Route → Route importieren/exportieren...** lädt bzw. speichert eine
-  Wegpunktliste als GPX, CSV, iNav `.mission` (klassisches MW-XML- oder
-  modernes JSON-Format, wird beim Import automatisch erkannt) oder
-  generisches XML.
-- **Karte → Kartentyp** wechselt zwischen OpenStreetMap und Esri-
-  Satellitenbild. **Karte → Sperrzonen laden...** importiert No-Fly-Zones
-  aus GeoJSON/CSV, **Sperrzonen anzeigen** blendet sie ein/aus.
-- **Tracking-Overlay** (auf der Karte) startet/pausiert die
-  Flugpfad-Aufzeichnung eigenständig von der Live-Anzeige – die Karte
-  zeichnet den Pfad immer nach, aber nur bei laufender Aufzeichnung landen
-  Punkte im Export. **Exportieren...** fragt das gewünschte Format
-  (GPX/KML/CSV) ab.
-- **Fluglog → Log-Einstellungen...** wählt, welche Telemetriefelder
-  aufgezeichnet werden und in welchem Intervall (0,1–60 s). **Fluglog →
-  Logging aktiv** fragt einen Zielpfad ab und schreibt ab dann laufend
-  eine CSV-Zeile pro Intervall, bis der Haken wieder entfernt wird.
-- **Einstellungen → Verbindung...** wechselt zur Laufzeit zwischen
-  WiFi/UDP und USB/Seriell sowie zwischen MAVLink und CRSF, inkl.
-  Host/Port bzw. seriellem Port + Baudrate — ohne die App neu zu starten.
-  Beendet dabei automatisch einen laufenden Demo-Modus.
-- **Einstellungen → Akkuwarnung...** wählt LiPo oder Li-Ion (füllt dabei
-  passende Standard-Schwellwerte vor) sowie Zellenzahl und die genauen
-  Warn-/Kritisch-Spannungen pro Zelle.
+- **Route & Planung → Wegpunkt-Modus** schaltet den Klick-zum-Hinzufügen-
+  Modus auf der Karte ein; ein Klick auf einen bestehenden Wegpunkt
+  entfernt ihn wieder. **Letzten Wegpunkt entfernen / Route löschen** für
+  die restliche Bearbeitung, **Wegpunkt-Editor anzeigen** blendet das
+  Editor-Overlay ein/aus (siehe unten). Ein **Rechtsklick** auf die Karte
+  öffnet jederzeit (unabhängig vom Wegpunkt-Modus) ein Menü mit Wegpunkt/
+  Startpunkt/Endpunkt, "Als Home setzen" sowie einem "Ansicht"-Untermenü.
+- **Route & Planung → Route importieren/exportieren...** lädt bzw.
+  speichert eine Wegpunktliste als GPX, CSV, iNav `.mission` (klassisches
+  MW-XML- oder modernes JSON-Format, wird beim Import automatisch
+  erkannt) oder generisches XML.
+- **Route & Planung → Grid-/Suchmuster erzeugen...** öffnet den
+  Suchmuster-Generator: aus zwei Eckpunkten oder Mittelpunkt+Radius (auch
+  per "aktuelle Position verwenden") entsteht mit wählbarem Bahnabstand,
+  Ausrichtung und Höhe eine Zickzack-Route, die die aktuelle Route
+  ersetzt.
+- **Sperrzonen → Sperrzonen laden...** importiert No-Fly-Zones aus
+  GeoJSON/CSV, **Sperrzonen anzeigen** blendet sie ein/aus, **Distanz-
+  Warnung aktivieren (50 m)** löst eine Sprachwarnung und eine Meldung in
+  der Statusleiste aus, sobald sich das Modell einer Zone auf 50 m
+  nähert. **OpenAIP-Einstellungen...** hinterlegt einen optionalen
+  API-Key und die gewünschten Luftraumtypen (CTR, Restricted, Prohibited
+  etc.), **OpenAIP Zonen laden** lädt damit passende Luftraumdaten für
+  die aktuelle Home-Position herunter und zeigt sie als Sperrzonen an.
+- **Anzeige & Karte → Kartentyp** wechselt zwischen OpenStreetMap und
+  Esri-Satellitenbild. **Auto-Center** schaltet das automatische
+  Nachführen der Karte auf die aktuelle Position ein/aus (auch über den
+  Lock-Button direkt auf der Karte erreichbar, Google-Maps-artig).
+  **Drohnenrichtung/Norden oben** dreht die ganze Karte mit dem aktuellen
+  Kurs mit (auch über den zweiten fixen Kartenbutton erreichbar).
+  **Aktuelle Position anspringen** (`Strg+Pos1`) zentriert die Karte
+  sofort, unabhängig von Auto-Center. **Wegpunkt-Editor anzeigen**,
+  **Koordinaten unter Mauszeiger anzeigen** und **RSSI/LQ Heatmap
+  aktivieren** (färbt den geflogenen Pfad live nach Verbindungsqualität)
+  blenden die jeweiligen Overlays/Modi ein/aus. **Fahrzeugtyp** wählt das
+  Kartensymbol (Quadrocopter/Wing/Flugzeug), **Künstlicher Horizont
+  anzeigen** blendet das Horizont-Overlay ein/aus (frei verschieb-/
+  skalierbar, **Position**/**Größe** bieten zusätzlich feste Presets),
+  **Dashboard anpassen...** ist hier zur schnellen Erreichbarkeit
+  gespiegelt (siehe Einstellungen).
+- **Telemetrie & Hardware → Verbindung...** wechselt zur Laufzeit
+  zwischen WiFi/UDP und USB/Seriell sowie zwischen MAVLink und CRSF, inkl.
+  Host/Port bzw. seriellem Port + Baudrate — ohne die App neu zu starten,
+  beendet dabei automatisch einen laufenden Demo-Modus. **Log-
+  Einstellungen...** wählt, welche Telemetriefelder aufgezeichnet werden
+  und in welchem Intervall (0,1–60 s), **Logging aktiv** fragt einen
+  Zielpfad ab und schreibt ab dann laufend eine CSV-Zeile pro Intervall.
+  **Akkuwarnung...** wählt LiPo oder Li-Ion (füllt passende Standard-
+  Schwellwerte vor) sowie Zellenzahl und die genauen Warn-/Kritisch-
+  Spannungen. **Antennen-Tracker / Telemetrie-Ausgabe...** sendet die
+  Live-Position als MAVLink oder NMEA über seriell oder UDP an einen
+  externen Tracker (Start/Stopp direkt im Dialog). **Modell-Profile
+  verwalten...** speichert die aktuellen Akku- und Dashboard-
+  Einstellungen unter einem Namen und lädt sie später mit einem Klick
+  wieder.
+- **Tools & Simulation → Demo-Modus / Plan-Modus** schaltet zur Laufzeit
+  zwischen echter Telemetrie, simulierten Daten und dem telemetriefreien
+  Plan-Modus um; beide sind auch direkt im Verbindungs-Popup beim Start
+  wählbar. **Höhenprofil der Route anzeigen** öffnet ein Diagramm mit
+  Gelände- und geplanter Flughöhe entlang der aktuellen Route.
 - **Einstellungen → Home-Position...** legt fest, wo die Karte beim
   nächsten Start zentriert ist (Lat/Lon-Eingabe oder "aktuelle Position
   übernehmen"); alternativ per Rechtsklick auf der Karte → "Als Home
-  setzen" direkt an der gewünschten Stelle teachen.
-- **Einstellungen → Dashboard anpassen...** blendet einzelne Dashboard-
-  Felder ein/aus (nicht nur ganze Gruppen) – die Auswahl wird als
-  persönlicher Standard unter `~/.elrs_ground_station/dashboard_fields.json`
-  gespeichert und beim nächsten Start automatisch wieder geladen.
-- **Einstellungen → Ansicht → Auto-Center** schaltet das automatische
-  Nachführen der Karte auf die aktuelle Position ein/aus (auch über den
-  Lock-Button direkt auf der Karte erreichbar, Google-Maps-artig).
-- **Einstellungen → Ansicht → Aktuelle Position anspringen** (`Strg+Pos1`)
-  zentriert die Karte sofort auf die letzte bekannte Position, unabhängig
-  von Auto-Center.
-- **Einstellungen → Ansicht → Fahrzeugtyp** wählt das Kartensymbol:
-  Quadrocopter, Wing (Nurflügler) oder Flugzeug.
-- **Einstellungen → Ansicht → Künstlicher Horizont anzeigen** blendet das
-  Horizont-Overlay ein/aus; es lässt sich außerdem direkt mit der Maus auf
-  der Karte verschieben (Ziehen) und über eine Anfassmarke in der Ecke
-  größer/kleiner ziehen, und **Position**/**Größe** bieten zusätzlich feste
-  Ecken- bzw. Zoomstufen-Presets.
-- **Einstellungen → Ansicht → Wegpunkt-Editor anzeigen** und
-  **Koordinaten unter Mauszeiger anzeigen** blenden die jeweiligen
-  Karten-Overlays ein/aus (siehe oben).
-- Ein zweiter fixer Button auf der Karte schaltet zwischen Norden-oben und
-  Drohnenrichtung-oben um; im letzteren Modus dreht sich die gesamte Karte
-  mit dem aktuellen Kurs.
-- **Einstellungen → Sprache → Deutsch/English** wechselt die komplette
-  Oberfläche (Menüs, Dashboard, Dialoge, Sprachwarnungen) sofort ohne
-  Neustart.
-- **Simulation → Demo-Modus / Plan-Modus** schaltet zur Laufzeit zwischen
-  echter Telemetrie, simulierten Daten und dem telemetriefreien Plan-Modus
-  um; beide sind auch direkt im Verbindungs-Popup beim Start wählbar.
+  setzen" direkt an der gewünschten Stelle teachen. **Dashboard
+  anpassen...** blendet einzelne Dashboard-Felder ein/aus (nicht nur
+  ganze Gruppen), ordnet die Gruppen in 1–3 Zeilen an und legt fest, ob
+  das Dashboard oben, unten, links oder rechts im Fenster angedockt ist –
+  die Auswahl wird als persönlicher Standard unter
+  `~/.elrs_ground_station/dashboard_fields.json`,
+  `dashboard_layout.json` bzw. `dashboard_position.json` gespeichert.
+  **Sprache → Deutsch/English**
+  wechselt die komplette Oberfläche (Menüs, Dashboard, Dialoge, Sprach-
+  warnungen) sofort ohne Neustart.
+- **Hilfe → Benutzerhandbuch öffnen...** öffnet das PDF-Handbuch mit dem
+  Standard-PDF-Betrachter des Systems.
 
 ## Einrichtung von ELRS-Sender/-Empfänger für WiFi-Telemetrie
 
@@ -298,10 +350,23 @@ elrs_ground_station/
                              Missionsfeldern (Aktion/Speed/P1-P3) und typisierten
                              Wegpunkten (Wegpunkt/Startpunkt/Endpunkt) aus dem
                              Rechtsklick-Menü
-    geo.py                   Haversine-Distanz + Peilung (Long-Range-Anzeige)
+    geo.py                   Haversine-Distanz + Peilung + lokale Meter-Projektion
+                              (equirectangular), gemeinsam genutzt von grid_pattern.py
+                              und nfz_proximity.py
     nfz.py                    No-Fly-Zone-Datenmodell (NoFlyZoneManager)
+    nfz_proximity.py           Distanz-zu-Sperrzone-Berechnung + NfzProximityMonitor
+                              (Sprachwarnung mit Hysterese/Cooldown)
     terrain.py                 Geländehöhen-Abfrage (Open-Elevation API) + Kollisionscheck
-    dashboard_config.py      Persistiert die gewählten Dashboard-Felder
+                              + route_elevation_profile() fürs Höhenprofil-Diagramm
+    grid_pattern.py             Grid-/Suchmuster-Generator (Ecken+Abstand oder
+                              Mittelpunkt+Radius -> Zickzack-Route)
+    tracker_output.py          Antennen-Tracker-Ausgabe (MAVLink GLOBAL_POSITION_INT
+                              oder NMEA $GPGGA über seriell/UDP)
+    model_profiles.py          Benannte Modell-Profile (Akku + Dashboard-Einstellungen)
+    openaip_import.py          OpenAIP-Luftraumdaten laden + zu Sperrzonen konvertieren
+    openaip_config.py          Persistiert OpenAIP-API-Key + bevorzugte Luftraumtypen
+    dashboard_config.py      Persistiert gewählte Dashboard-Felder, Gruppen-Layout
+                              (Reihenfolge/Zeilen) und Andock-Position
     home_config.py            Persistiert die konfigurierte Home-/Startposition
     i18n.py                 DE/EN-Strings + Laufzeit-Sprachumschaltung
   telemetry/
@@ -315,19 +380,29 @@ elrs_ground_station/
     serial_ports.py            Hilfsfunktion fuer --list-ports
     demo_worker.py              Simulierte Telemetrie
   ui/
-    main_window.py           Hauptfenster, verbindet Worker <-> UI, Menüs, Startpopup,
-                              Plan-Modus, Rechtsklick-/Ansicht-Dispatch
+    main_window.py           Hauptfenster, verbindet Worker <-> UI, 8-Gruppen-Menü,
+                              Startpopup, Plan-Modus, Rechtsklick-/Ansicht-Dispatch
     connection_dialog.py     Dialog zum Wechsel WiFi/USB + Protokoll (auch als
                               Startpopup, inkl. Demo-/Plan-Modus-Buttons)
     battery_settings_dialog.py  LiPo/Li-Ion-Chemie + Zellenzahl + Schwellwerte
-    dashboard_settings_dialog.py  Dashboard-Felder ein-/ausblenden
+    dashboard_settings_dialog.py  Dashboard-Felder ein-/ausblenden, Gruppen-Reihenfolge/
+                              Zeilen, Andock-Position (oben/unten/links/rechts)
     home_position_dialog.py   Home-/Startposition setzen (Lat/Lon oder aktuelle Position)
     flight_log_dialog.py     Fluglog-Feldauswahl + Intervall
+    elevation_profile_dialog.py  Höhenprofil-Diagramm (natives QPainter-Widget,
+                              kein matplotlib) – Gelände- vs. geplante Flughöhe
+    grid_pattern_dialog.py     Dialog für den Grid-/Suchmuster-Generator
+    tracker_output_dialog.py   Antennen-Tracker-Ausgabe konfigurieren/starten/stoppen
+    model_profile_dialog.py    Modell-Profile speichern/laden/löschen
+    openaip_settings_dialog.py  OpenAIP-API-Key + Luftraumtyp-Auswahl
     map_widget.py            QWebEngineView-Wrapper um die Leaflet-Karte + QWebChannel,
                               Overlay-Stacking/Positionierung
     map_template.py          Self-contained Leaflet/OSM+Satellit HTML+JS (Fahrzeugsymbole,
                               Home-Marker, Routen-/NFZ-Layer, Rechtsklick-Menü,
-                              Kartenrotation für Drohnenrichtung-oben, Koordinatenanzeige)
+                              Kartenrotation für Drohnenrichtung-oben, Koordinatenanzeige,
+                              RSSI/LQ-Heatmap-Track)
+    leaflet_assets.py         Leaflet 1.9.4 (JS+CSS) fest eingebettet statt per CDN-Link,
+                              damit die Karte auch ohne Internet lädt (siehe "Offline-Nutzung")
     map_buttons.py            Fixe Google-Maps-artige Kartenbuttons (Auto-Center-Sperre,
                               Kartenausrichtung)
     route_bridge.py          QWebChannel-Bruecke fuer Wegpunkt-/Kontextmenü-/
@@ -338,7 +413,8 @@ elrs_ground_station/
     route_editor_overlay.py   Wegpunkt-Editor als Live-Overlay (Tabelle, INAV-Mission-
                               Export/Import, Geländeprüfung)
     track_overlay.py          Start/Pause/Export-Overlay fuer die Flugpfad-Aufzeichnung
-    dashboard.py             Frei konfigurierbare Telemetrie-Leiste mit Status-Icons
+    dashboard.py             Frei konfigurierbare Telemetrie-Leiste mit Status-Icons,
+                              Mehrzeilen-Layout, andockbar an jeder Fensterseite
     icons.py                  QPainter-gezeichnete Dashboard-Icons (keine Bilddateien)
   export/
     track_export.py         GPX/KML/CSV-Export des geflogenen Pfads
@@ -346,7 +422,8 @@ elrs_ground_station/
     route_import.py          Routen-Import: GPX, iNav .mission (MW-XML + JSON,
                               automatisch erkannt), generisches XML, CSV
     inav_mission.py           INAV-.mission-JSON Export/Import/Validierung
-    nfz_import.py             No-Fly-Zone-Import: GeoJSON, CSV
+    nfz_import.py             No-Fly-Zone-Import: GeoJSON, CSV (teilt sich die
+                              Polygon-Parsing-Logik mit core/openaip_import.py)
     flight_logger.py          Kontinuierliches CSV-Fluglog (QTimer-basiert)
   alerts/tts_alert.py        Akku-Sprachwarnung (pyttsx3, eigener Thread, i18n-Texte,
                               LiPo/Li-Ion-Schwellwerte)
@@ -380,7 +457,10 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   current/mAh and minimum cell voltage), extra sensors (vario, baro
   altitude, RPM, temperature), and long-range readouts (speed,
   distance/bearing to home, flight timer) - every individual field can be
-  shown or hidden and is saved as your personal default layout.
+  shown or hidden, groups can be drag-and-dropped into a new order and
+  spread across 1-3 rows, and the whole dashboard can be docked to the
+  top, bottom, left, or right of the window (freely resizable as a
+  window split) - all saved as your personal default.
 - **Freely draggable and resizable map overlays** (artificial horizon,
   waypoint editor, track recorder) - drag them around like little windows
   and resize from a corner grip, just like a window.
@@ -425,11 +505,50 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   UI language (German/English).
 - **Demo mode** with a simulated flight path, to try the whole app out
   without a model or ELRS hardware.
+- **Route elevation profile**: shows terrain and planned flight altitude
+  along the current route as a chart, using the same elevation lookup as
+  the terrain collision check in the waypoint editor.
+- **Grid/search pattern generator**: automatically builds a zigzag search
+  route from two corner points or a center+radius, with configurable
+  track spacing, orientation, and altitude.
+- **RSSI/LQ heatmap**: colors the live flown path by link quality
+  (green/yellow/red), toggleable.
+- **No-fly-zone proximity warning**: warns via voice and the status bar
+  as soon as the model gets within 50 m of a restricted zone.
+- **OpenAIP no-fly zones**: downloads airspace data (CTR, prohibited
+  areas, restricted areas, etc.) straight from OpenAIP for the current
+  home position and shows it as no-fly zones - with an API key and
+  preferred-airspace-type picker in the settings dialog.
+- **Antenna tracker output**: sends the live position as MAVLink
+  (`GLOBAL_POSITION_INT`) or NMEA (`$GPGGA`) over serial or UDP to an
+  external antenna tracker.
+- **Model profiles**: save/load named profiles bundling battery and
+  dashboard settings, to switch between different aircraft quickly.
 
 Works with flight controllers (ArduPilot/Betaflight/iNav) that output
 their telemetry via MAVLink, as well as with the raw CRSF/TBS Crossfire
 telemetry stream straight from the ELRS receiver (ExpressLRS deliberately
 reuses the same CRSF frame format as TBS Crossfire).
+
+## Offline use (long-range flying without internet)
+
+The app is built for field use, where an internet connection is often not
+available. Telemetry reception, the dashboard, artificial horizon,
+waypoint planning/editor, no-fly-zone display and proximity warning,
+voice alerts, flight log, track recording, antenna tracker output, and
+model profiles all work **fully without** an internet connection - even
+the map itself (Leaflet) is embedded directly in the app and no longer
+loads from a CDN. Only three things actively need a connection, and each
+degrades gracefully instead of crashing the app:
+
+- **Map tiles** (OpenStreetMap/satellite): without internet, the map
+  background stays blank/gray, but every other map feature (markers,
+  routes, no-fly zones, the right-click menu) keeps working normally.
+- **Route elevation profile** (Open-Elevation lookup): if the lookup
+  fails, the dialog shows an inline error message instead of crashing.
+- **Loading OpenAIP no-fly zones**: if the download fails, an error
+  message appears in the status bar; any zones already loaded/imported
+  are left untouched.
 
 ## Installation
 
@@ -483,71 +602,79 @@ connection (WiFi/UDP or USB) and protocol (MAVLink or CRSF) - Cancel just
 keeps whatever was passed on the command line/the defaults, and an extra
 button starts demo mode directly.
 
-While the app is running:
+While the app is running, the menu bar is organized into eight groups -
+File | Route & Planning | No-Fly Zones | Display & Map | Telemetry &
+Hardware | Tools & Simulation | Settings | Help:
+
 - **File → Export Flight Path as GPX/KML** saves every GPS point recorded
   so far during the current flight (or use the map's track overlay below,
   which also offers CSV).
-- **Route → Waypoint Mode** turns on click-to-add mode on the map; clicking
-  an existing waypoint removes it again. **Route → Remove Last Waypoint /
-  Clear Route** for the rest of the editing. **Right-clicking** the map
-  always opens a menu (independent of Waypoint Mode) for Waypoint/Start
-  Point/End Point, "Set as Home", and a "View" submenu.
-- **Route → Show Waypoint Editor** toggles the editor overlay on the map
-  (also available under Settings → View) - shows waypoint count/total
-  distance above an editable table of altitude, name, INAV action, speed,
-  and P1-P3; edits apply immediately, no confirmation needed. Its buttons
-  export/import the route as INAV `.mission` JSON and check it against
-  terrain elevation (red = collision, yellow = tight, green = clear).
-- **Route → Import/Export Route...** loads or saves a waypoint list as
-  GPX, CSV, iNav `.mission` (classic MW-XML or modern JSON format,
-  auto-detected on import), or generic XML.
-- **Map → Map Type** switches between OpenStreetMap and Esri satellite
-  imagery. **Map → Load No-Fly Zones...** imports restricted areas from
-  GeoJSON/CSV, **Show No-Fly Zones** toggles them.
-- **The track overlay** (on the map) starts/pauses flight-path recording
-  independently of the live display - the map always draws the trail, but
-  points only end up in the export while recording is active.
-  **Export...** asks for the desired format (GPX/KML/CSV).
-- **Flight Log → Log Settings...** picks which telemetry fields get
-  recorded and at what interval (0.1-60s). **Flight Log → Logging Active**
-  asks for a target path and then keeps writing one CSV row per interval
-  until unchecked again.
-- **Settings → Connection...** switches at runtime between WiFi/UDP and
-  USB/serial as well as between MAVLink and CRSF, including host/port or
-  serial port + baud rate - without restarting the app. Automatically
-  stops a running demo mode.
-- **Settings → Battery Alert...** picks LiPo or Li-Ion (pre-filling
-  matching default thresholds) plus cell count and the exact warning/
-  critical voltages per cell.
+- **Route & Planning → Waypoint Mode** turns on click-to-add mode on the
+  map; clicking an existing waypoint removes it again. **Remove Last
+  Waypoint / Clear Route** for the rest of the editing, **Show Waypoint
+  Editor** toggles the editor overlay (see below). **Right-clicking** the
+  map always opens a menu (independent of Waypoint Mode) for Waypoint/
+  Start Point/End Point, "Set as Home", and a "View" submenu.
+- **Route & Planning → Import/Export Route...** loads or saves a waypoint
+  list as GPX, CSV, iNav `.mission` (classic MW-XML or modern JSON
+  format, auto-detected on import), or generic XML.
+- **Route & Planning → Generate Grid/Search Pattern...** opens the search
+  pattern generator: from two corner points or a center+radius (also via
+  "use current position"), it builds a zigzag route with configurable
+  track spacing, orientation, and altitude, replacing the current route.
+- **No-Fly Zones → Load No-Fly Zones...** imports restricted areas from
+  GeoJSON/CSV, **Show No-Fly Zones** toggles them, **Enable Distance
+  Warning (50m)** triggers a spoken warning and a status bar message as
+  soon as the model gets within 50 m of a zone. **OpenAIP Settings...**
+  stores an optional API key and the preferred airspace types (CTR,
+  Restricted, Prohibited, etc.), **Load OpenAIP Zones** then downloads
+  matching airspace data for the current home position and shows it as
+  no-fly zones.
+- **Display & Map → Map Type** switches between OpenStreetMap and Esri
+  satellite imagery. **Auto-Center** toggles automatically re-centering
+  the map on the current position (also reachable via the lock button
+  directly on the map, Google-Maps style). **Heading Up/North Up**
+  rotates the whole map to match the current course (also reachable via
+  the second fixed map button). **Jump to Current Position** (`Ctrl+Home`)
+  immediately centers the map, independent of Auto-Center. **Show
+  Waypoint Editor**, **Show Coordinates Under Cursor**, and **Enable
+  RSSI/LQ Heatmap** (colors the flown path live by link quality) toggle
+  the respective overlays/modes. **Vehicle Type** picks the map marker
+  (quadcopter/wing/airplane), **Show Artificial Horizon** toggles the
+  horizon overlay (freely draggable/resizable, **Position**/**Size**
+  additionally offer fixed presets), **Customize Dashboard...** is
+  mirrored here for quick access (see Settings).
+- **Telemetry & Hardware → Connection...** switches at runtime between
+  WiFi/UDP and USB/serial as well as between MAVLink and CRSF, including
+  host/port or serial port + baud rate - without restarting the app,
+  automatically stopping a running demo mode. **Log Settings...** picks
+  which telemetry fields get recorded and at what interval (0.1-60s),
+  **Logging Active** asks for a target path and then keeps writing one
+  CSV row per interval. **Battery Alert...** picks LiPo or Li-Ion
+  (pre-filling matching default thresholds) plus cell count and the exact
+  warning/critical voltages. **Antenna Tracker / Telemetry Output...**
+  sends the live position as MAVLink or NMEA over serial or UDP to an
+  external tracker (start/stop directly in the dialog). **Manage Model
+  Profiles...** saves the current battery and dashboard settings under a
+  name and reloads them later with one click.
+- **Tools & Simulation → Demo Mode / Plan Mode** switches at runtime
+  between real telemetry, simulated data, and the telemetry-free plan
+  mode; both are also directly selectable from the startup connection
+  popup. **Show Route Elevation Profile** opens a chart of terrain and
+  planned flight altitude along the current route.
 - **Settings → Home Position...** sets where the map centers on the next
   launch (lat/lon entry, or "use current position"); alternatively,
   right-click the map → "Set as Home" to teach it right where you're
-  looking.
-- **Settings → Customize Dashboard...** shows/hides individual dashboard
-  fields (not just whole groups) - the selection is saved as your personal
-  default under `~/.elrs_ground_station/dashboard_fields.json` and loaded
-  again automatically next launch.
-- **Settings → View → Auto-Center** toggles automatically re-centering the
-  map on the current position (also reachable via the lock button directly
-  on the map, Google-Maps style).
-- **Settings → View → Jump to Current Position** (`Ctrl+Home`) immediately
-  centers the map on the last known position, independent of Auto-Center.
-- **Settings → View → Vehicle Type** picks the map marker: quadcopter,
-  wing (flying wing), or airplane.
-- **Settings → View → Show Artificial Horizon** toggles the horizon
-  overlay; it can also be dragged directly with the mouse on the map and
-  resized from a corner grip, and **Position**/**Size** additionally offer
-  fixed corner/zoom-level presets.
-- **Settings → View → Show Waypoint Editor** and **Show Coordinates Under
-  Cursor** toggle the respective map overlays (see above).
-- A second fixed button on the map switches between north-up and
-  heading-up; in the latter mode, the whole map rotates to match the
-  current course.
-- **Settings → Language → Deutsch/English** switches the entire UI (menus,
-  dashboard, dialogs, spoken warnings) instantly, no restart needed.
-- **Simulation → Demo Mode / Plan Mode** switches at runtime between real
-  telemetry, simulated data, and the telemetry-free plan mode; both are
-  also directly selectable from the startup connection popup.
+  looking. **Customize Dashboard...** shows/hides individual dashboard
+  fields (not just whole groups), arranges the groups into 1-3 rows, and
+  picks whether the dashboard docks to the top, bottom, left, or right of
+  the window - the selection is saved as your personal default under
+  `~/.elrs_ground_station/dashboard_fields.json`, `dashboard_layout.json`,
+  and `dashboard_position.json`.
+  **Language → Deutsch/English** switches the entire UI (menus, dashboard,
+  dialogs, spoken warnings) instantly, no restart needed.
+- **Help → Open User Manual...** opens the PDF manual in the system's
+  default PDF viewer.
 
 ## Setting up an ELRS TX/RX for WiFi telemetry
 
@@ -644,10 +771,23 @@ elrs_ground_station/
     route.py                waypoint/route data model (RouteManager), incl. INAV
                              mission fields (action/speed/P1-P3) and typed
                              waypoints (waypoint/start/end) from the right-click menu
-    geo.py                   haversine distance + bearing (long-range readout)
+    geo.py                   haversine distance + bearing + local meter projection
+                              (equirectangular), shared by grid_pattern.py and
+                              nfz_proximity.py
     nfz.py                    no-fly-zone data model (NoFlyZoneManager)
-    terrain.py                 terrain elevation lookup (Open-Elevation API) + collision check
-    dashboard_config.py      persists the chosen dashboard fields
+    nfz_proximity.py           distance-to-nearest-zone calculation + NfzProximityMonitor
+                              (voice warning with hysteresis/cooldown)
+    terrain.py                 terrain elevation lookup (Open-Elevation API) + collision
+                              check + route_elevation_profile() for the elevation chart
+    grid_pattern.py             grid/search pattern generator (corners+spacing or
+                              center+radius -> zigzag route)
+    tracker_output.py          antenna tracker output (MAVLink GLOBAL_POSITION_INT or
+                              NMEA $GPGGA over serial/UDP)
+    model_profiles.py          named model profiles (battery + dashboard settings)
+    openaip_import.py          fetch OpenAIP airspace data + convert to no-fly zones
+    openaip_config.py          persists the OpenAIP API key + preferred airspace types
+    dashboard_config.py      persists the chosen dashboard fields, group layout
+                              (order/rows), and dock position
     home_config.py            persists the configured home/startup position
     i18n.py                 DE/EN strings + runtime language switch
   telemetry/
@@ -661,19 +801,30 @@ elrs_ground_station/
     serial_ports.py            helper for --list-ports
     demo_worker.py              simulated telemetry
   ui/
-    main_window.py           main window, wires workers <-> UI, menus, startup popup,
-                              plan mode, right-click/view-action dispatch
+    main_window.py           main window, wires workers <-> UI, the 8-group menu,
+                              startup popup, plan mode, right-click/view-action dispatch
     connection_dialog.py     WiFi/USB + protocol switch dialog (also used as startup
                               popup, incl. demo/plan mode buttons)
     battery_settings_dialog.py  LiPo/Li-Ion chemistry + cell count + thresholds
-    dashboard_settings_dialog.py  show/hide dashboard fields
+    dashboard_settings_dialog.py  show/hide dashboard fields, group order/rows, dock
+                              position (top/bottom/left/right)
     home_position_dialog.py   set home/startup position (lat/lon or current position)
     flight_log_dialog.py     flight-log field selection + interval
+    elevation_profile_dialog.py  route elevation chart (native QPainter widget, no
+                              matplotlib) - terrain vs. planned flight altitude
+    grid_pattern_dialog.py     dialog for the grid/search pattern generator
+    tracker_output_dialog.py   configure/start/stop the antenna tracker output
+    model_profile_dialog.py    save/load/delete model profiles
+    openaip_settings_dialog.py  OpenAIP API key + airspace type picker
     map_widget.py            QWebEngineView wrapper around the Leaflet map + QWebChannel,
                               overlay stacking/positioning
     map_template.py          self-contained Leaflet/OSM+satellite HTML+JS (vehicle
                               markers, home marker, route/NFZ layers, right-click menu,
-                              map rotation for heading-up, coordinate readout)
+                              map rotation for heading-up, coordinate readout, RSSI/LQ
+                              heatmap track)
+    leaflet_assets.py         Leaflet 1.9.4 (JS+CSS) embedded inline instead of a CDN
+                              link, so the map still loads with no internet (see
+                              "Offline use")
     map_buttons.py            fixed Google-Maps-style map buttons (auto-center lock,
                               map orientation)
     route_bridge.py          QWebChannel bridge for waypoint/context-menu/coordinate
@@ -684,7 +835,8 @@ elrs_ground_station/
     route_editor_overlay.py   waypoint editor as a live overlay (table, INAV mission
                               export/import, terrain check)
     track_overlay.py          start/pause/export overlay for track recording
-    dashboard.py             fully configurable telemetry bar with status icons
+    dashboard.py             fully configurable telemetry bar with status icons,
+                              multi-row layout, dockable to any side of the window
     icons.py                  QPainter-drawn dashboard icons (no image files)
   export/
     track_export.py         GPX/KML/CSV export of the flown path
@@ -692,7 +844,8 @@ elrs_ground_station/
     route_import.py          route import: GPX, iNav .mission (MW-XML + JSON,
                               auto-detected), generic XML, CSV
     inav_mission.py           INAV .mission JSON export/import/validation
-    nfz_import.py             no-fly-zone import: GeoJSON, CSV
+    nfz_import.py             no-fly-zone import: GeoJSON, CSV (shares its polygon
+                              parsing logic with core/openaip_import.py)
     flight_logger.py          continuous CSV flight log (QTimer-based)
   alerts/tts_alert.py        battery voice warning (pyttsx3, own thread, i18n text,
                               LiPo/Li-Ion thresholds)
