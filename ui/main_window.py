@@ -44,6 +44,7 @@ from telemetry.crsf_serial_worker import CRSFSerialWorker
 from telemetry.crsf_worker import CRSFWorker
 from telemetry.demo_worker import DemoWorker
 from telemetry.mavlink_worker import MAVLinkWorker
+from ui.altitude_track_overlay import AltitudeTrackOverlay
 from ui.battery_settings_dialog import BatterySettingsDialog
 from ui.connection_dialog import ConnectionSettingsDialog
 from ui.dashboard import Dashboard
@@ -132,6 +133,10 @@ class MainWindow(QMainWindow):
         self._track_overlay.start_pause_clicked.connect(self._toggle_track_recording)
         self._track_overlay.export_clicked.connect(self._export_track_prompt)
         self._map.add_overlay(self._track_overlay, "top-left")
+
+        self._altitude_track_start = None
+        self._altitude_track_overlay = AltitudeTrackOverlay()
+        self._map.add_overlay(self._altitude_track_overlay, "top-left")
 
         self._lock_button = LockButton()
         self._lock_button.clicked.connect(self._toggle_map_lock)
@@ -339,6 +344,12 @@ class MainWindow(QMainWindow):
         self._heatmap_action.setChecked(False)
         self._heatmap_action.toggled.connect(self._map.set_heatmap_enabled)
 
+        self._altitude_track_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._altitude_track_action, "menu_altitude_track"))
+        self._altitude_track_action.setCheckable(True)
+        self._altitude_track_action.setChecked(True)
+        self._altitude_track_action.toggled.connect(self._altitude_track_overlay.setVisible)
+
         vehicle_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((vehicle_menu, "menu_view_vehicle"))
         self._vehicle_group = QActionGroup(self)
@@ -521,6 +532,8 @@ class MainWindow(QMainWindow):
         self._track_recording = False
         self._track_overlay.set_state(False, 0)
         self._dashboard.reset_session()
+        self._altitude_track_start = None
+        self._altitude_track_overlay.reset()
 
         if demo:
             status = i18n.tr("status_demo_started")
@@ -550,6 +563,8 @@ class MainWindow(QMainWindow):
             self._track_recorder.clear()
             self._track_recording = False
             self._track_overlay.set_state(False, 0)
+            self._altitude_track_start = None
+            self._altitude_track_overlay.reset()
             # Nothing is flying, and the whole point of Plan Mode is to pan
             # freely while placing waypoints - so release the follow-the-drone
             # lock rather than leaving it fighting the user's own panning.
@@ -849,6 +864,10 @@ class MainWindow(QMainWindow):
                 self._track_recorder.add_point(state)
                 self._track_overlay.update_count(len(self._track_recorder))
             self._has_fix = True
+            if state.alt is not None:
+                if self._altitude_track_start is None:
+                    self._altitude_track_start = time.monotonic()
+                self._altitude_track_overlay.add_sample(time.monotonic() - self._altitude_track_start, state.alt)
 
         self._battery_monitor.check(state)
         self._check_nfz_proximity(state)
