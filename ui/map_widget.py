@@ -12,6 +12,8 @@ from core.nfz import NoFlyZone
 from core.route import Waypoint
 from ui.map_template import get_map_html
 from ui.route_bridge import RouteBridge
+from ui.tile_cache_handler import SCHEME as TILE_CACHE_SCHEME
+from ui.tile_cache_handler import TileCacheSchemeHandler
 
 OVERLAY_MARGIN = 10
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -27,6 +29,9 @@ class MapWidget(QWebEngineView):
         self._channel = QWebChannel(self.page())
         self._channel.registerObject("routeBridge", self.route_bridge)
         self.page().setWebChannel(self._channel)
+
+        self._tile_cache_handler = TileCacheSchemeHandler(self)
+        self.page().profile().installUrlSchemeHandler(TILE_CACHE_SCHEME, self._tile_cache_handler)
 
         html_kwargs = {
             "label_waypoint": i18n.tr("mapctx_waypoint"),

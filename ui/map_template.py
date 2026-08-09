@@ -11,9 +11,10 @@ QWebChannel bridge registered as `routeBridge`.
 
 Leaflet itself is vendored inline (ui/leaflet_assets.py) rather than
 fetched from a CDN, so the map UI, route planning, and drone tracking all
-still work with no network connection - only the OSM/satellite tile
-images require one; without them the map just shows a blank/gray
-background behind everything else.
+still work with no network connection. Tile imagery is fetched through the
+elrstile:// custom scheme (ui/tile_cache_handler.py), which caches every
+tile to disk and serves already-cached tiles with no network at all -
+only areas never viewed online before still show a blank/gray background.
 """
 
 from ui.leaflet_assets import LEAFLET_CSS, LEAFLET_JS
@@ -105,15 +106,18 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 <script>
   var map = L.map('map', { zoomControl: true }).setView([__CENTER_LAT__, __CENTER_LON__], __ZOOM__);
 
+  // Tile requests go through the elrstile:// custom scheme (registered in
+  // ui/tile_cache_handler.py) instead of straight to the tile servers, so
+  // they can be served from a local disk cache when offline and refreshed
+  // whenever a fetch succeeds - see "Offline use" in the README.
   var baseLayers = {
-    osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    osm: L.tileLayer('elrstile://osm/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     }),
-    satellite: L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 19, attribution: 'Tiles &copy; Esri' }
-    )
+    satellite: L.tileLayer('elrstile://satellite/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: 'Tiles &copy; Esri'
+    })
   };
   var currentBaseLayer = 'osm';
   baseLayers[currentBaseLayer].addTo(map);
