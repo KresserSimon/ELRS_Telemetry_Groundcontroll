@@ -329,6 +329,19 @@ class Dashboard(QWidget):
             f.setVisible(f.caption_key in self._visible_fields)
         for box, fields in self._fields_by_box.items():
             box.setVisible(any(f.caption_key in self._visible_fields for f in fields))
+        self._apply_uniform_field_width()
+
+    def _apply_uniform_field_width(self) -> None:
+        """Give every field the same minimum width (the widest visible
+        one's natural size) so the grid reads as a tidy, symmetric table
+        instead of ragged columns sized by whichever caption happens to be
+        longest in that particular group."""
+        visible = [f for f in self._fields if f.caption_key in self._visible_fields]
+        if not visible:
+            return
+        uniform_width = max(f.sizeHint().width() for f in visible)
+        for f in self._fields:
+            f.setMinimumWidth(uniform_width)
 
     def group_order(self) -> List[str]:
         return list(self._group_order)
@@ -399,6 +412,8 @@ class Dashboard(QWidget):
                 lane_layout.addWidget(box)
             lane_layout.addStretch(1)
             self._outer.addWidget(lane_widget)
+
+        self._apply_uniform_field_width()
 
     # ------------------------------------------------------------- session
 
