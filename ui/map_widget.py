@@ -28,12 +28,30 @@ from ui.tile_cache_handler import TileCacheSchemeHandler
 
 OVERLAY_MARGIN = 10
 
-# Stage-1-only default: a real region extract if one happens to be present
-# under dev_data/ (gitignored, not shipped) - there's no user-facing "pick
-# your region" flow yet (see the migration plan), so this just needs any
-# working local .pmtiles file to prove the MapLibre path renders at all.
+# Real region extracts (gitignored, dev-only - never shipped in the .exe;
+# see the migration plan) under dev_data/. No user-facing "pick your region"
+# flow yet - _select_pmtiles_region() picks automatically based on the
+# drone's home position, using each file's real bounding box (read directly
+# from its own header via the `pmtiles show` CLI, not guessed).
 _DEV_DATA_DIR = Path(__file__).resolve().parent.parent / "dev_data" / "pmtiles"
-DEFAULT_MAPLIBRE_PMTILES_PATH = _DEV_DATA_DIR / "switzerland.pmtiles"
+# (filename, lon_min, lat_min, lon_max, lat_max)
+_REGIONS = (
+    ("germany.pmtiles", 5.87, 47.27, 15.04, 55.06),
+    ("austria.pmtiles", 9.53, 46.37, 17.16, 49.02),
+    ("switzerland.pmtiles", 5.96, 45.82, 10.49, 47.81),
+    ("italy.pmtiles", 6.63, 35.49, 18.58, 47.10),
+)
+_FALLBACK_REGION_FILE = "germany.pmtiles"  # matches the demo default (Munich)
+
+
+def _select_pmtiles_region(lat: Optional[float], lon: Optional[float]) -> Path:
+    if lat is not None and lon is not None:
+        for filename, lon_min, lat_min, lon_max, lat_max in _REGIONS:
+            if lon_min <= lon <= lon_max and lat_min <= lat <= lat_max:
+                return _DEV_DATA_DIR / filename
+    return _DEV_DATA_DIR / _FALLBACK_REGION_FILE
+
+
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 
 DISK_CACHE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB, per the offline-tile-cache sizing goal
@@ -123,15 +141,23 @@ class MapWidget(QWebEngineView):
         self.setHtml(get_map_html(**html_kwargs))
 
     def _load_maplibre_page(self, home_lat: Optional[float], home_lon: Optional[float]) -> None:
-        # Stage 1 spike: no user-facing region picker yet (see the
-        # migration plan) - just whatever local .pmtiles file happens to be
-        # available under dev_data/. A missing file degrades to a blank
-        # map (no crash) rather than falling back to the Leaflet path,
-        # since silently substituting a different renderer than the one
-        # explicitly selected would be more confusing than an empty map.
-        if DEFAULT_MAPLIBRE_PMTILES_PATH.is_file():
-            self.pmtiles_bridge.open(DEFAULT_MAPLIBRE_PMTILES_PATH)
-        html_kwargs = {}
+        # No user-facing region picker yet (see the migration plan) - the
+        # region whose bbox contains the home position is opened
+        # automatically. A missing file degrades to a blank map (no crash)
+        # rather than falling back to the Leaflet path, since silently
+        # substituting a different renderer than the one explicitly
+        # selected would be more confusing than an empty map.
+        region_path = _select_pmtiles_region(home_lat, home_lon)
+        if region_path.is_file():
+            self.pmtiles_bridge.open(region_path)
+        html_kwargs = {
+            "label_waypoint": i18n.tr("mapctx_waypoint"),
+            "label_start": i18n.tr("mapctx_start"),
+            "label_end": i18n.tr("mapctx_end"),
+            "label_set_home": i18n.tr("mapctx_set_home"),
+            "label_wp_edit": i18n.tr("mapctx_wp_edit"),
+            "label_wp_delete": i18n.tr("mapctx_wp_delete"),
+        }
         if home_lat is not None and home_lon is not None:
             html_kwargs["center_lat"] = home_lat
             html_kwargs["center_lon"] = home_lon
