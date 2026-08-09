@@ -1,12 +1,11 @@
 """Main application window: map + dashboard + menus, wired to a telemetry worker."""
 from __future__ import annotations
 
-import sys
 import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, QUrl
-from PyQt6.QtGui import QActionGroup, QDesktopServices
+from PyQt6.QtGui import QActionGroup, QDesktopServices, QIcon
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -32,6 +31,7 @@ from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor
 from core.openaip_config import load_openaip_config, save_openaip_config
 from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_to_zones
 from core.model_profiles import ModelProfile
+from core.resources import resource_path
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
 from core.tracker_output import TrackerOutputSender
@@ -91,6 +91,9 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("ELRS Ground Station")
         self.resize(1200, 800)
+        icon_path = resource_path("assets", "app_icon.ico")
+        if icon_path.is_file():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self._track_recorder = TrackRecorder()
         self._tts_worker = TTSWorker()
@@ -775,14 +778,7 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _manual_pdf_path() -> Path:
-        # PyInstaller sets sys._MEIPASS to the bundled-data directory in
-        # both --onefile and --onedir builds; running from source, docs/
-        # sits next to this file's grandparent (ui/ -> elrs_ground_station/).
-        if getattr(sys, "frozen", False):
-            base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
-        else:
-            base = Path(__file__).resolve().parent.parent
-        return base / "docs" / "ELRS_Ground_Station_Benutzerhandbuch.pdf"
+        return resource_path("docs", "ELRS_Ground_Station_Benutzerhandbuch.pdf")
 
     def _on_home_position_picked(self, lat: float, lon: float) -> None:
         # Picked via the map's right-click "Als Home setzen" - the user is

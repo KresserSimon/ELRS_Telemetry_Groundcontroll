@@ -28,8 +28,14 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
   rechts im Fenster andocken (als Fenster-Trennbalken frei in der Größe
   verstellbar) – alles wird als persönlicher Standard gespeichert.
 - **Frei verschieb- und größenveränderbare Karten-Overlays** (künstlicher
-  Horizont, Wegpunkt-Editor, Tracking-Aufzeichnung) – wie kleine Fenster
-  direkt mit der Maus ziehen und über eine Ecken-Anfassmarke skalieren.
+  Horizont, Wegpunkt-Editor, Tracking-Aufzeichnung, Höhenverlauf) – wie
+  kleine Fenster direkt mit der Maus ziehen, über eine Ecken-Anfassmarke
+  skalieren und über ein Schließen-Symbol in der Ecke ausblenden. Horizont,
+  Höhenverlauf und Wegpunkt-Editor lassen sich alternativ auch direkt im
+  Telemetrie-Bereich andocken statt frei auf der Karte zu schweben.
+- **Live-Höhenverlauf**: zeichnet die tatsächlich geflogene Höhe über die
+  Zeit als Diagramm auf, sobald Telemetrie eintrifft – unabhängig vom
+  statischen Höhenprofil der geplanten Route (siehe unten).
 - **Wegpunkt-Editor als Live-Overlay** auf der Karte: Liste aller
   Wegpunkte mit Höhe, Name und INAV-Missionsparametern (Aktion,
   Geschwindigkeit, P1–P3), Änderungen wirken sofort. Export/Import als
@@ -107,17 +113,30 @@ Planung/-Editor, Sperrzonen-Anzeige und -Distanzwarnung, Sprachwarnungen,
 Fluglog, Track-Aufzeichnung, Antennen-Tracker-Ausgabe und Modell-Profile
 funktionieren vollständig **ohne** Internetverbindung – auch die Karte
 selbst (Leaflet) ist fest in die App eingebettet und lädt nicht mehr von
-einem CDN nach. Nur drei Dinge brauchen aktiv eine Verbindung und
-degradieren dann kontrolliert, statt die App zum Absturz zu bringen:
+einem CDN nach. Drei Dinge brauchen ursprünglich eine Internetverbindung,
+werden aber inzwischen alle auf die Festplatte gecacht und danach auch
+offline aus dem Cache bedient – jeder erfolgreiche Online-Abruf
+aktualisiert den jeweiligen Cache automatisch für das nächste Mal:
 
-- **Kartenkacheln** (OpenStreetMap/Satellit): ohne Internet bleibt der
-  Kartenhintergrund leer/grau, alle anderen Kartenfunktionen (Marker,
-  Routen, Sperrzonen, Rechtsklick-Menü) funktionieren trotzdem normal.
-- **Höhenprofil der Route** (Open-Elevation-Abfrage): schlägt die Abfrage
-  fehl, erscheint im Dialog eine Fehlermeldung statt eines Absturzes.
-- **OpenAIP-Sperrzonen laden**: schlägt der Download fehl, erscheint eine
-  Fehlermeldung in der Statusleiste; bereits geladene/importierte
-  Sperrzonen bleiben unberührt.
+- **Kartenkacheln** (OpenStreetMap/Satellit): jede einmal angezeigte
+  Kachel landet unter `~/.elrs_ground_station/tile_cache` und wird beim
+  nächsten Aufruf – auch offline – von dort geladen, statt erneut vom
+  Kartenserver abgerufen zu werden. Nur Gebiete, die noch nie online
+  angezeigt wurden, bleiben ohne Internet leer/grau.
+- **Höhenprofil der Route** (Open-Elevation-Abfrage): bereits abgefragte
+  Punkte werden unter `~/.elrs_ground_station/elevation_cache.json`
+  gecacht; nur wirklich neue Punkte brauchen einen erneuten Online-Abruf,
+  schlägt dieser fehl, erscheint im Dialog eine Fehlermeldung statt eines
+  Absturzes.
+- **OpenAIP-Sperrzonen laden**: die zuletzt heruntergeladenen Zonen für
+  eine Region werden unter `~/.elrs_ground_station/openaip_cache.json`
+  gecacht; schlägt ein erneuter Download fehl, werden automatisch die
+  zwischengespeicherten Zonen weiterverwendet.
+
+Empfohlen für den Longrange-Einsatz: die App vor der Abfahrt einmal
+zuhause mit Internetverbindung im geplanten Fluggebiet öffnen (Karte
+ansehen, Höhenprofil/OpenAIP-Zonen laden), damit die Caches gefüllt sind
+und im Feld alles ohne Verbindung verfügbar ist.
 
 ## Installation
 
@@ -183,7 +202,9 @@ Tools & Simulation | Einstellungen | Hilfe:
   Modus auf der Karte ein; ein Klick auf einen bestehenden Wegpunkt
   entfernt ihn wieder. **Letzten Wegpunkt entfernen / Route löschen** für
   die restliche Bearbeitung, **Wegpunkt-Editor anzeigen** blendet das
-  Editor-Overlay ein/aus (siehe unten). Ein **Rechtsklick** auf die Karte
+  Editor-Overlay ein/aus (siehe unten), **Wegpunkt-Editor im Dashboard
+  andocken** bettet ihn stattdessen unterhalb der Telemetriefelder ein.
+  Ein **Rechtsklick** auf die Karte
   öffnet jederzeit (unabhängig vom Wegpunkt-Modus) ein Menü mit Wegpunkt/
   Startpunkt/Endpunkt, "Als Home setzen" sowie einem "Ansicht"-Untermenü.
 - **Route & Planung → Route importieren/exportieren...** lädt bzw.
@@ -211,14 +232,19 @@ Tools & Simulation | Einstellungen | Hilfe:
   Kurs mit (auch über den zweiten fixen Kartenbutton erreichbar).
   **Aktuelle Position anspringen** (`Strg+Pos1`) zentriert die Karte
   sofort, unabhängig von Auto-Center. **Wegpunkt-Editor anzeigen**,
-  **Koordinaten unter Mauszeiger anzeigen** und **RSSI/LQ Heatmap
-  aktivieren** (färbt den geflogenen Pfad live nach Verbindungsqualität)
-  blenden die jeweiligen Overlays/Modi ein/aus. **Fahrzeugtyp** wählt das
-  Kartensymbol (Quadrocopter/Wing/Flugzeug), **Künstlicher Horizont
-  anzeigen** blendet das Horizont-Overlay ein/aus (frei verschieb-/
-  skalierbar, **Position**/**Größe** bieten zusätzlich feste Presets),
-  **Dashboard anpassen...** ist hier zur schnellen Erreichbarkeit
-  gespiegelt (siehe Einstellungen).
+  **Tracking-Overlay anzeigen**, **Höhenverlauf anzeigen**, **Koordinaten
+  unter Mauszeiger anzeigen** und **RSSI/LQ Heatmap aktivieren** (färbt
+  den geflogenen Pfad live nach Verbindungsqualität) blenden die
+  jeweiligen Overlays/Modi ein/aus. **Fahrzeugtyp** wählt das Kartensymbol
+  (Quadrocopter/Wing/Flugzeug), **Künstlicher Horizont anzeigen** blendet
+  das Horizont-Overlay ein/aus (frei verschieb-/skalierbar, **Position**/
+  **Größe** bieten zusätzlich feste Presets). **Horizont im Dashboard
+  andocken** und **Höhenverlauf im Dashboard andocken** betten die
+  jeweiligen Overlays direkt in die Telemetrie-Leiste ein statt sie frei
+  auf der Karte schweben zu lassen (nebeneinander in einer Zeile über den
+  Telemetriefeldern, siehe Abschnitt zum Dashboard). **Dashboard
+  anpassen...** ist hier zur schnellen Erreichbarkeit gespiegelt (siehe
+  Einstellungen).
 - **Telemetrie & Hardware → Verbindung...** wechselt zur Laufzeit
   zwischen WiFi/UDP und USB/Seriell sowie zwischen MAVLink und CRSF, inkl.
   Host/Port bzw. seriellem Port + Baudrate — ohne die App neu zu starten,
@@ -320,12 +346,15 @@ cd elrs_ground_station
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt pyinstaller
-pyinstaller --name ELRS_GroundStation --onedir --add-data "docs;docs" main.py
+pyinstaller --name ELRS_GroundStation --onedir --icon assets/app_icon.ico --add-data "docs;docs" --add-data "assets;assets" main.py
 ```
 
 `--add-data "docs;docs"` bündelt das PDF-Handbuch mit, damit Hilfe →
 Benutzerhandbuch öffnen... es auch in der kompilierten Exe findet, nicht
-nur beim Start aus dem Quellcode.
+nur beim Start aus dem Quellcode. `--add-data "assets;assets"` bündelt das
+App-Icon und Logo mit (Fenster-/Taskleisten-Icon, Logo im Start-Popup);
+`--icon assets/app_icon.ico` setzt zusätzlich das Icon der Exe-Datei
+selbst (Explorer-Ansicht, Alt+Tab).
 
 Ergebnis liegt unter `dist\ELRS_GroundStation\ELRS_GroundStation.exe` – der
 gesamte `dist\ELRS_GroundStation`-Ordner (Exe + `_internal`-Verzeichnis mit
@@ -462,8 +491,14 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   top, bottom, left, or right of the window (freely resizable as a
   window split) - all saved as your personal default.
 - **Freely draggable and resizable map overlays** (artificial horizon,
-  waypoint editor, track recorder) - drag them around like little windows
-  and resize from a corner grip, just like a window.
+  waypoint editor, track recorder, altitude track) - drag them around
+  like little windows, resize from a corner grip, and close them with a
+  small (x) button in the corner. The horizon, altitude track, and
+  waypoint editor can also be docked directly into the telemetry area
+  instead of floating on the map.
+- **Live altitude track**: plots actual flown altitude over time as
+  telemetry arrives - independent of the static elevation profile of the
+  planned route (see below).
 - **Waypoint editor as a live map overlay**: a table of every waypoint with
   altitude, name, and INAV mission parameters (action, speed, P1-P3) -
   edits apply immediately. Export/import as INAV `.mission` JSON and a
@@ -538,17 +573,27 @@ waypoint planning/editor, no-fly-zone display and proximity warning,
 voice alerts, flight log, track recording, antenna tracker output, and
 model profiles all work **fully without** an internet connection - even
 the map itself (Leaflet) is embedded directly in the app and no longer
-loads from a CDN. Only three things actively need a connection, and each
-degrades gracefully instead of crashing the app:
+loads from a CDN. Three things originally needed a connection, but are
+now all cached to disk and served from that cache offline afterwards -
+every successful online fetch refreshes the cache automatically for next
+time:
 
-- **Map tiles** (OpenStreetMap/satellite): without internet, the map
-  background stays blank/gray, but every other map feature (markers,
-  routes, no-fly zones, the right-click menu) keeps working normally.
-- **Route elevation profile** (Open-Elevation lookup): if the lookup
+- **Map tiles** (OpenStreetMap/satellite): every tile shown once is saved
+  under `~/.elrs_ground_station/tile_cache` and loaded from there next
+  time - including offline - instead of being fetched again. Only areas
+  never viewed online before still show a blank/gray background.
+- **Route elevation profile** (Open-Elevation lookup): already-looked-up
+  points are cached under `~/.elrs_ground_station/elevation_cache.json`;
+  only genuinely new points need a fresh online request, and if that
   fails, the dialog shows an inline error message instead of crashing.
-- **Loading OpenAIP no-fly zones**: if the download fails, an error
-  message appears in the status bar; any zones already loaded/imported
-  are left untouched.
+- **Loading OpenAIP no-fly zones**: the most recently downloaded zones for
+  a region are cached under `~/.elrs_ground_station/openaip_cache.json`;
+  if a fresh download fails, the cached zones are used automatically.
+
+Recommended for long-range trips: open the app once at home with an
+internet connection over the area you plan to fly (look at the map, load
+the elevation profile/OpenAIP zones) so the caches are populated and
+everything is available offline in the field.
 
 ## Installation
 
@@ -612,7 +657,8 @@ Hardware | Tools & Simulation | Settings | Help:
 - **Route & Planning → Waypoint Mode** turns on click-to-add mode on the
   map; clicking an existing waypoint removes it again. **Remove Last
   Waypoint / Clear Route** for the rest of the editing, **Show Waypoint
-  Editor** toggles the editor overlay (see below). **Right-clicking** the
+  Editor** toggles the editor overlay (see below), **Dock Waypoint Editor
+  in Dashboard** embeds it below the telemetry fields instead. **Right-clicking** the
   map always opens a menu (independent of Waypoint Mode) for Waypoint/
   Start Point/End Point, "Set as Home", and a "View" submenu.
 - **Route & Planning → Import/Export Route...** loads or saves a waypoint
@@ -637,13 +683,18 @@ Hardware | Tools & Simulation | Settings | Help:
   rotates the whole map to match the current course (also reachable via
   the second fixed map button). **Jump to Current Position** (`Ctrl+Home`)
   immediately centers the map, independent of Auto-Center. **Show
-  Waypoint Editor**, **Show Coordinates Under Cursor**, and **Enable
-  RSSI/LQ Heatmap** (colors the flown path live by link quality) toggle
-  the respective overlays/modes. **Vehicle Type** picks the map marker
-  (quadcopter/wing/airplane), **Show Artificial Horizon** toggles the
-  horizon overlay (freely draggable/resizable, **Position**/**Size**
-  additionally offer fixed presets), **Customize Dashboard...** is
-  mirrored here for quick access (see Settings).
+  Waypoint Editor**, **Show Tracking Overlay**, **Show Altitude Track**,
+  **Show Coordinates Under Cursor**, and **Enable RSSI/LQ Heatmap**
+  (colors the flown path live by link quality) toggle the respective
+  overlays/modes. **Vehicle Type** picks the map marker (quadcopter/wing/
+  airplane), **Show Artificial Horizon** toggles the horizon overlay
+  (freely draggable/resizable, **Position**/**Size** additionally offer
+  fixed presets). **Dock Artificial Horizon in Dashboard** and **Dock
+  Altitude Track in Dashboard** embed the respective overlays directly
+  into the telemetry bar instead of floating on the map (side by side in
+  a row above the telemetry fields, see the dashboard section).
+  **Customize Dashboard...** is mirrored here for quick access (see
+  Settings).
 - **Telemetry & Hardware → Connection...** switches at runtime between
   WiFi/UDP and USB/serial as well as between MAVLink and CRSF, including
   host/port or serial port + baud rate - without restarting the app,
@@ -742,12 +793,15 @@ cd elrs_ground_station
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt pyinstaller
-pyinstaller --name ELRS_GroundStation --onedir --add-data "docs;docs" main.py
+pyinstaller --name ELRS_GroundStation --onedir --icon assets/app_icon.ico --add-data "docs;docs" --add-data "assets;assets" main.py
 ```
 
 `--add-data "docs;docs"` bundles the PDF manual so Help -> Open User
 Manual... can find it in the compiled exe too, not just when run from
-source.
+source. `--add-data "assets;assets"` bundles the app icon and logo
+(window/taskbar icon, logo in the startup popup); `--icon
+assets/app_icon.ico` additionally sets the icon of the exe file itself
+(Explorer view, Alt+Tab).
 
 Result lands at `dist\ELRS_GroundStation\ELRS_GroundStation.exe` - the
 whole `dist\ELRS_GroundStation` folder (exe + `_internal` directory with

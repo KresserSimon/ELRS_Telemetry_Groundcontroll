@@ -3,6 +3,8 @@
 """
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -11,6 +13,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QRadioButton,
@@ -19,7 +22,10 @@ from PyQt6.QtWidgets import (
 )
 
 from core import i18n
+from core.resources import resource_path
 from telemetry.serial_ports import list_serial_ports
+
+HEADER_LOGO_HEIGHT = 96
 
 DEFAULT_UDP_PORT = {"mavlink": 14550, "crsf": 14551}
 DEFAULT_BAUD = {"mavlink": 57600, "crsf": 420000}
@@ -96,6 +102,20 @@ class ConnectionSettingsDialog(QDialog):
         button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
+        # Only the startup popup (demo/plan buttons present) shows the logo -
+        # this same dialog class is reused later for "Verbindung..." while
+        # the app is already running, where a big header would just be
+        # visual noise for a settings change.
+        if show_demo_button or show_plan_button:
+            logo_path = resource_path("assets", "LOGO.png")
+            if logo_path.is_file():
+                logo_label = QLabel()
+                pixmap = QPixmap(str(logo_path)).scaledToHeight(
+                    HEADER_LOGO_HEIGHT, Qt.TransformationMode.SmoothTransformation
+                )
+                logo_label.setPixmap(pixmap)
+                logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                layout.addWidget(logo_label)
         layout.addWidget(protocol_box)
         layout.addWidget(transport_box)
         layout.addWidget(self._udp_group)
