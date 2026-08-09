@@ -12,6 +12,7 @@ from typing import List, Optional
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QComboBox,
     QDoubleSpinBox,
@@ -60,11 +61,43 @@ def format_distance(meters: float) -> str:
     return f"{meters:.0f} m"
 
 
+class _WaypointTable(QTableWidget):
+    """QTableWidget's built-in InternalMove drag-and-drop only reorders
+    QTableWidgetItem cells, not the QWidget-based spin boxes/combos most
+    columns here use (a well-known Qt limitation), so a dragged row visually
+    desyncs from its own data. Instead of fighting that, this fully replaces
+    dropEvent(): it never lets Qt move anything itself, only detects the
+    source/target rows and reports them - the caller reorders the underlying
+    waypoint list and rebuilds the table from scratch, which is correct by
+    construction."""
+
+    row_reorder_requested = pyqtSignal(int, int)
+
+    def dropEvent(self, event) -> None:
+        source_row = self.currentRow()
+        target_item = self.itemAt(event.position().toPoint())
+        target_row = target_item.row() if target_item is not None else self.rowCount() - 1
+        event.ignore()
+        if source_row >= 0 and target_row >= 0 and source_row != target_row:
+            self.row_reorder_requested.emit(source_row, target_row)
+
+
 class RouteEditorOverlay(DraggableOverlay):
     """waypoints_edited fires whenever the user edits a field in place;
-    MainWindow applies it straight back to RouteManager."""
+    MainWindow applies it straight back to RouteManager. The structural
+    operations below (delete/reorder/insert/reverse/bulk-edit) go through
+    their own signals instead, since RouteManager - not this view - owns
+    that logic (see core.route.RouteManager); MainWindow just forwards
+    each signal to the matching RouteManager method."""
 
     waypoints_edited = pyqtSignal(list)
+    row_selected = pyqtSignal(int)
+    delete_requested = pyqtSignal(list)
+    insert_after_requested = pyqtSignal(int)
+    reverse_requested = pyqtSignal()
+    reorder_requested = pyqtSignal(int, int)
+    bulk_altitude_requested = pyqtSignal(list, float)
+    bulk_speed_requested = pyqtSignal(list, float)
 
     MIN_WIDTH = 420
     MIN_HEIGHT = 220
@@ -87,6 +120,11 @@ class RouteEditorOverlay(DraggableOverlay):
         # (which would tear down the very widget the user is still editing).
         self._self_originated = False
         self._building = False
+        # True while select_row() drives the table selection programmatically
+        # (map -> editor sync) - suppresses row_selected so it doesn't
+        # immediately bounce right back to the map as if the user clicked
+        # the row themselves.
+        self._selecting_programmatically = False
 
         self._alt_spins: List[QDoubleSpinBox] = []
         self._name_edits: List[QLineEdit] = []
@@ -110,9 +148,15 @@ class RouteEditorOverlay(DraggableOverlay):
         )
         self._summary_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
-        self._table = QTableWidget(0, 10, self)
+        self._table = _WaypointTable(0, 10, self)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setSectionResizeMode(COL_NAME, QHeaderView.ResizeMode.Stretch)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._table.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self._table.setDragEnabled(True)
+        self._table.row_reorder_requested.connect(self.reorder_requested)
+        self._table.itemSelectionChanged.connect(self._on_selection_changed)
 
         export_btn = QPushButton()
         export_btn.clicked.connect(self._export_mission)
@@ -123,11 +167,58 @@ class RouteEditorOverlay(DraggableOverlay):
         self._export_btn, self._import_btn, self._terrain_btn = export_btn, import_btn, terrain_btn
 
         button_row = QHBoxLayout()
-        button_row.setContentsMargins(10, 4, 10, 8)
+        button_row.setContentsMargins(10, 4, 10, 4)
         button_row.addWidget(export_btn)
         button_row.addWidget(import_btn)
         button_row.addWidget(terrain_btn)
         button_row.addStretch(1)
+
+        delete_selected_btn = QPushButton()
+        delete_selected_btn.clicked.connect(self._delete_selected)
+        delete_all_btn = QPushButton()
+        delete_all_btn.clicked.connect(self._delete_all)
+        insert_btn = QPushButton()
+        insert_btn.clicked.connect(self._insert_after_selected)
+        reverse_btn = QPushButton()
+        reverse_btn.clicked.connect(self.reverse_requested)
+        self._delete_selected_btn, self._delete_all_btn = delete_selected_btn, delete_all_btn
+        self._insert_btn, self._reverse_btn = insert_btn, reverse_btn
+
+        edit_row = QHBoxLayout()
+        edit_row.setContentsMargins(10, 0, 10, 4)
+        edit_row.addWidget(delete_selected_btn)
+        edit_row.addWidget(delete_all_btn)
+        edit_row.addWidget(insert_btn)
+        edit_row.addWidget(reverse_btn)
+        edit_row.addStretch(1)
+
+        self._bulk_alt_spin = QDoubleSpinBox()
+        self._bulk_alt_spin.setRange(-1000.0, 10000.0)
+        self._bulk_alt_spin.setDecimals(1)
+        self._bulk_alt_spin.setSuffix(" m")
+        bulk_alt_btn = QPushButton()
+        bulk_alt_btn.clicked.connect(self._apply_bulk_altitude)
+        self._bulk_speed_spin = QDoubleSpinBox()
+        self._bulk_speed_spin.setRange(0.0, 100.0)
+        self._bulk_speed_spin.setDecimals(1)
+        bulk_speed_btn = QPushButton()
+        bulk_speed_btn.clicked.connect(self._apply_bulk_speed)
+        self._bulk_alt_label = QLabel()
+        self._bulk_alt_label.setStyleSheet("color: #c7cfda; font-size: 11px; background: transparent;")
+        self._bulk_speed_label = QLabel()
+        self._bulk_speed_label.setStyleSheet("color: #c7cfda; font-size: 11px; background: transparent;")
+        self._bulk_alt_btn, self._bulk_speed_btn = bulk_alt_btn, bulk_speed_btn
+
+        bulk_row = QHBoxLayout()
+        bulk_row.setContentsMargins(10, 0, 10, 8)
+        bulk_row.addWidget(self._bulk_alt_label)
+        bulk_row.addWidget(self._bulk_alt_spin)
+        bulk_row.addWidget(bulk_alt_btn)
+        bulk_row.addSpacing(12)
+        bulk_row.addWidget(self._bulk_speed_label)
+        bulk_row.addWidget(self._bulk_speed_spin)
+        bulk_row.addWidget(bulk_speed_btn)
+        bulk_row.addStretch(1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -136,6 +227,8 @@ class RouteEditorOverlay(DraggableOverlay):
         layout.addWidget(self._summary_label)
         layout.addWidget(self._table, 1)
         layout.addLayout(button_row)
+        layout.addLayout(edit_row)
+        layout.addLayout(bulk_row)
 
         i18n.on_language_changed(self.retranslate)
         self.retranslate()
@@ -176,6 +269,14 @@ class RouteEditorOverlay(DraggableOverlay):
         self._export_btn.setText(i18n.tr("routeeditor_export_mission"))
         self._import_btn.setText(i18n.tr("routeeditor_import_mission"))
         self._terrain_btn.setText(i18n.tr("routeeditor_check_terrain"))
+        self._delete_selected_btn.setText(i18n.tr("routeeditor_delete_selected"))
+        self._delete_all_btn.setText(i18n.tr("routeeditor_delete_all"))
+        self._insert_btn.setText(i18n.tr("routeeditor_insert_after"))
+        self._reverse_btn.setText(i18n.tr("routeeditor_reverse"))
+        self._bulk_alt_label.setText(i18n.tr("routeeditor_bulk_alt_label"))
+        self._bulk_alt_btn.setText(i18n.tr("routeeditor_bulk_apply"))
+        self._bulk_speed_label.setText(i18n.tr("routeeditor_bulk_speed_label"))
+        self._bulk_speed_btn.setText(i18n.tr("routeeditor_bulk_apply"))
 
     # ---------------------------------------------------------------- table
 
@@ -280,6 +381,68 @@ class RouteEditorOverlay(DraggableOverlay):
             self.waypoints_edited.emit(self._read_table())
         finally:
             self._self_originated = False
+
+    # -------------------------------------------------------- selection sync
+
+    def _selected_rows(self) -> List[int]:
+        return sorted({index.row() for index in self._table.selectionModel().selectedRows()})
+
+    def _on_selection_changed(self) -> None:
+        if self._selecting_programmatically or self._building:
+            return
+        rows = self._selected_rows()
+        if len(rows) == 1:
+            self.row_selected.emit(rows[0])
+
+    def select_row(self, index: int) -> None:
+        """Programmatic selection driven by the map (a marker was clicked) -
+        highlights the matching row without re-emitting row_selected, which
+        would otherwise bounce straight back to the map as a redundant
+        select_waypoint() call."""
+        if not (0 <= index < self._table.rowCount()):
+            return
+        self._selecting_programmatically = True
+        try:
+            self._table.selectRow(index)
+            self._table.scrollToItem(self._table.item(index, COL_INDEX))
+        finally:
+            self._selecting_programmatically = False
+
+    # ------------------------------------------------------ structural edits
+
+    def _delete_selected(self) -> None:
+        rows = self._selected_rows()
+        if not rows:
+            QMessageBox.information(self, i18n.tr("routeeditor_title"), i18n.tr("routeeditor_no_selection"))
+            return
+        self.delete_requested.emit(rows)
+
+    def _delete_all(self) -> None:
+        if not self._waypoints:
+            return
+        confirm = QMessageBox.question(self, i18n.tr("routeeditor_title"), i18n.tr("routeeditor_confirm_delete_all"))
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self.delete_requested.emit(list(range(len(self._waypoints))))
+
+    def _insert_after_selected(self) -> None:
+        rows = self._selected_rows()
+        if len(rows) != 1 or rows[0] >= len(self._waypoints) - 1:
+            QMessageBox.information(self, i18n.tr("routeeditor_title"), i18n.tr("routeeditor_insert_needs_pair"))
+            return
+        self.insert_after_requested.emit(rows[0])
+
+    def _apply_bulk_altitude(self) -> None:
+        rows = self._selected_rows() or list(range(len(self._waypoints)))
+        if not rows:
+            return
+        self.bulk_altitude_requested.emit(rows, self._bulk_alt_spin.value())
+
+    def _apply_bulk_speed(self) -> None:
+        rows = self._selected_rows() or list(range(len(self._waypoints)))
+        if not rows:
+            return
+        self.bulk_speed_requested.emit(rows, self._bulk_speed_spin.value())
 
     # ------------------------------------------------------------- mission
 

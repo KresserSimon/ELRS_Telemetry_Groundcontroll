@@ -83,6 +83,8 @@ class MapWidget(QWebEngineView):
             "label_view_route_editor": i18n.tr("mapctx_view_route_editor"),
             "label_view_coords": i18n.tr("mapctx_view_coords"),
             "label_view_heatmap": i18n.tr("mapctx_view_heatmap"),
+            "label_wp_edit": i18n.tr("mapctx_wp_edit"),
+            "label_wp_delete": i18n.tr("mapctx_wp_delete"),
         }
         if home_lat is not None and home_lon is not None:
             html_kwargs["center_lat"] = home_lat
@@ -210,6 +212,9 @@ class MapWidget(QWebEngineView):
             for i, wp in enumerate(waypoints)
         ]
         self.page().runJavaScript(f"setRoute({json.dumps(payload)});")
+
+    def select_waypoint(self, index: int) -> None:
+        self.page().runJavaScript(f"selectWaypoint({index});")
 
     def set_route_mode(self, enabled: bool) -> None:
         self.page().runJavaScript(f"setRouteMode({'true' if enabled else 'false'});")

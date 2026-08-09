@@ -76,6 +76,9 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     color: #e8e8e8; text-align: left; font-size: 12px; cursor: pointer;
   }
   .route-context-submenu-flyout button:hover { background: #2ecc71; color: #10151a; }
+  .route-wp-dot-selected {
+    background: #3ba7ff !important; box-shadow: 0 0 0 3px rgba(59,167,255,0.45);
+  }
   .coord-overlay {
     position: absolute; display: none; z-index: 999; pointer-events: none;
     background: rgba(18,22,28,0.88); color: #e8e8e8; font-size: 11px; font-family: monospace;
@@ -102,6 +105,10 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
       <button onclick="contextMenuViewAction('heatmap')">__LABEL_VIEW_HEATMAP__</button>
     </div>
   </div>
+</div>
+<div id="waypoint-context-menu" class="route-context-menu">
+  <button onclick="wpContextMenuEdit()">__LABEL_WP_EDIT__</button>
+  <button onclick="wpContextMenuDelete()">__LABEL_WP_DELETE__</button>
 </div>
 <script>
   var map = L.map('map', { zoomControl: true }).setView([__CENTER_LAT__, __CENTER_LON__], __ZOOM__);
@@ -406,6 +413,17 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
   }
 
+  var selectedWaypointIndex = -1;
+
+  function selectWaypoint(idx) {
+    selectedWaypointIndex = idx;
+    routeMarkers.forEach(function (m, i) {
+      var el = m.getElement && m.getElement();
+      var dot = el && el.querySelector('.route-wp-dot');
+      if (dot) { dot.classList.toggle('route-wp-dot-selected', i === idx); }
+    });
+  }
+
   function setRoute(wps) {
     routeMarkers.forEach(function (m) { map.removeLayer(m); });
     routeMarkers = [];
@@ -418,14 +436,28 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
       latlngs.push(latlng);
       var icon = L.divIcon({
         className: '',
-        html: '<div class="route-wp-dot">' + (idx + 1) + '</div>',
+        html: '<div class="route-wp-dot' + (idx === selectedWaypointIndex ? ' route-wp-dot-selected' : '') + '">' + (idx + 1) + '</div>',
         iconSize: [20, 20],
         iconAnchor: [10, 10]
       });
-      var marker = L.marker(latlng, { icon: icon, zIndexOffset: 500 }).addTo(map);
+      var marker = L.marker(latlng, { icon: icon, zIndexOffset: 500, draggable: true }).addTo(map);
       marker.on('click', function (e) {
         L.DomEvent.stopPropagation(e);
+        selectWaypoint(idx);
         if (routeBridge) { routeBridge.waypoint_marker_clicked(idx); }
+      });
+      marker.on('contextmenu', function (e) {
+        L.DomEvent.preventDefault(e);
+        L.DomEvent.stopPropagation(e);
+        wpContextIndex = idx;
+        var oe = e.originalEvent;
+        wpContextMenuEl.style.left = oe.clientX + 'px';
+        wpContextMenuEl.style.top = oe.clientY + 'px';
+        wpContextMenuEl.style.display = 'block';
+      });
+      marker.on('dragend', function () {
+        var ll = marker.getLatLng();
+        if (routeBridge) { routeBridge.waypoint_marker_moved(idx, ll.lat, ll.lng); }
       });
       routeMarkers.push(marker);
       registerCounterRotated(marker);
@@ -478,6 +510,26 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     contextMenuLatLng = null;
   }
 
+  // ------------------------------------------------- per-marker context menu
+
+  var wpContextMenuEl = document.getElementById('waypoint-context-menu');
+  var wpContextIndex = -1;
+
+  function hideWpContextMenu() {
+    wpContextMenuEl.style.display = 'none';
+    wpContextIndex = -1;
+  }
+
+  function wpContextMenuEdit() {
+    if (wpContextIndex >= 0 && routeBridge) { routeBridge.waypoint_marker_edit(wpContextIndex); }
+    hideWpContextMenu();
+  }
+
+  function wpContextMenuDelete() {
+    if (wpContextIndex >= 0 && routeBridge) { routeBridge.waypoint_marker_delete(wpContextIndex); }
+    hideWpContextMenu();
+  }
+
   map.on('contextmenu', function (e) {
     L.DomEvent.preventDefault(e);
     var oe = e.originalEvent;
@@ -492,6 +544,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   });
 
   map.on('click movestart zoomstart', hideContextMenu);
+  map.on('click movestart zoomstart', hideWpContextMenu);
 
   function contextMenuPick(kind) {
     if (contextMenuLatLng && routeBridge) {
@@ -595,6 +648,8 @@ def get_map_html(
     label_view_route_editor: str = "Wegpunkt-Editor anzeigen",
     label_view_coords: str = "Koordinaten anzeigen",
     label_view_heatmap: str = "RSSI/LQ Heatmap",
+    label_wp_edit: str = "Bearbeiten",
+    label_wp_delete: str = "Löschen",
 ) -> str:
     return (
         MAP_HTML_TEMPLATE
@@ -611,6 +666,8 @@ def get_map_html(
         .replace("__LABEL_VIEW_ROUTE_EDITOR__", label_view_route_editor)
         .replace("__LABEL_VIEW_COORDS__", label_view_coords)
         .replace("__LABEL_VIEW_HEATMAP__", label_view_heatmap)
+        .replace("__LABEL_WP_EDIT__", label_wp_edit)
+        .replace("__LABEL_WP_DELETE__", label_wp_delete)
         .replace("__LEAFLET_CSS__", LEAFLET_CSS)
         .replace("__LEAFLET_JS__", LEAFLET_JS)
     )

@@ -162,13 +162,23 @@ class MainWindow(QMainWindow):
         self._route_manager = RouteManager()
         self._route_manager.changed.connect(self._on_route_changed)
         self._map.route_bridge.waypoint_added.connect(self._route_manager.add)
-        self._map.route_bridge.waypoint_removed.connect(self._route_manager.remove_at)
         self._map.route_bridge.waypoint_added_typed.connect(self._route_manager.add_typed)
         self._map.route_bridge.home_position_picked.connect(self._on_home_position_picked)
         self._map.route_bridge.view_action_triggered.connect(self._on_view_action)
+        self._map.route_bridge.waypoint_selected.connect(self._on_waypoint_marker_selected)
+        self._map.route_bridge.waypoint_delete_requested.connect(self._on_waypoint_marker_delete)
+        self._map.route_bridge.waypoint_edit_requested.connect(self._on_waypoint_marker_edit)
+        self._map.route_bridge.waypoint_moved.connect(self._route_manager.update_position)
 
         self._route_overlay = RouteEditorOverlay()
         self._route_overlay.waypoints_edited.connect(self._route_manager.set_all)
+        self._route_overlay.row_selected.connect(self._map.select_waypoint)
+        self._route_overlay.delete_requested.connect(self._route_manager.remove_many)
+        self._route_overlay.insert_after_requested.connect(self._route_manager.insert_between)
+        self._route_overlay.reverse_requested.connect(self._route_manager.reverse)
+        self._route_overlay.reorder_requested.connect(self._route_manager.reorder)
+        self._route_overlay.bulk_altitude_requested.connect(self._route_manager.set_altitude_many)
+        self._route_overlay.bulk_speed_requested.connect(self._route_manager.set_speed_many)
         _resize_from_saved(self._route_overlay, self._ui_state.get("route_editor_size"))
         self._map.add_overlay(self._route_overlay, "bottom-left")
 
@@ -1164,6 +1174,17 @@ class MainWindow(QMainWindow):
         segments = self._route_manager.segment_distances()
         self._map.render_route(waypoints, segments)
         self._route_overlay.set_waypoints(waypoints, segments)
+
+    def _on_waypoint_marker_selected(self, index: int) -> None:
+        self._route_overlay.select_row(index)
+
+    def _on_waypoint_marker_delete(self, index: int) -> None:
+        self._route_manager.remove_at(index)
+
+    def _on_waypoint_marker_edit(self, index: int) -> None:
+        self._route_editor_action.setChecked(True)
+        self._route_overlay.select_row(index)
+        self._route_overlay.raise_()
 
     def _import_route(self) -> None:
         filter_str = (

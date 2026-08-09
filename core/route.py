@@ -83,6 +83,65 @@ class RouteManager(QObject):
         self._waypoints = list(waypoints)
         self.changed.emit()
 
+    def remove_many(self, indices: List[int]) -> None:
+        for index in sorted(set(indices), reverse=True):
+            if 0 <= index < len(self._waypoints):
+                del self._waypoints[index]
+        self.changed.emit()
+
+    def update_position(self, index: int, lat: float, lon: float) -> None:
+        if 0 <= index < len(self._waypoints):
+            self._waypoints[index].lat = lat
+            self._waypoints[index].lon = lon
+            self.changed.emit()
+
+    def reorder(self, from_index: int, to_index: int) -> None:
+        """Move the waypoint at from_index so it ends up at to_index,
+        shifting everything between - the semantics QTableWidget's
+        InternalMove drag-and-drop expects, and the same "insert" meaning
+        list.insert() uses (to_index is where the item lands *after* the
+        move, not a raw list-splice offset)."""
+        if not (0 <= from_index < len(self._waypoints)) or not (0 <= to_index < len(self._waypoints)):
+            return
+        if from_index == to_index:
+            return
+        wp = self._waypoints.pop(from_index)
+        self._waypoints.insert(to_index, wp)
+        self.changed.emit()
+
+    def insert_between(self, index: int) -> None:
+        """Insert a new waypoint at the midpoint of the segment starting at
+        index (between waypoints[index] and waypoints[index + 1])."""
+        if not (0 <= index < len(self._waypoints) - 1):
+            return
+        a, b = self._waypoints[index], self._waypoints[index + 1]
+        mid_lat = (a.lat + b.lat) / 2
+        mid_lon = (a.lon + b.lon) / 2
+        mid_alt = None
+        if a.alt is not None and b.alt is not None:
+            mid_alt = (a.alt + b.alt) / 2
+        self._waypoints.insert(index + 1, Waypoint(mid_lat, mid_lon, mid_alt))
+        self.changed.emit()
+
+    def reverse(self) -> None:
+        if len(self._waypoints) > 1:
+            self._waypoints.reverse()
+            self.changed.emit()
+
+    def set_altitude_many(self, indices: List[int], alt: float) -> None:
+        for index in indices:
+            if 0 <= index < len(self._waypoints):
+                self._waypoints[index].alt = alt
+        if indices:
+            self.changed.emit()
+
+    def set_speed_many(self, indices: List[int], speed: float) -> None:
+        for index in indices:
+            if 0 <= index < len(self._waypoints):
+                self._waypoints[index].speed = speed
+        if indices:
+            self.changed.emit()
+
     def segment_distances(self) -> List[float]:
         """Great-circle distance (metres) between each consecutive waypoint pair."""
         return [
