@@ -55,7 +55,10 @@ def _register_scheme() -> None:
     if bytes(QWebEngineUrlScheme.schemeByName(SCHEME).name()) == SCHEME:
         return  # already registered - re-import, or a second MapWidget instance
     scheme = QWebEngineUrlScheme(SCHEME)
-    scheme.setSyntax(QWebEngineUrlScheme.Syntax.HostAndPort)
+    # Host, not HostAndPort: elrstile:// URLs (elrstile://osm/{z}/{x}/{y}.png)
+    # never carry a port - HostAndPort requires a default port to be set via
+    # setDefaultPort(), which registerScheme() otherwise rejects at runtime.
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
     scheme.setFlags(
         QWebEngineUrlScheme.Flag.SecureScheme
         | QWebEngineUrlScheme.Flag.LocalAccessAllowed

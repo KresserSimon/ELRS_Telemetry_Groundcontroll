@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict
 
 CACHE_PATH = Path.home() / ".elrs_ground_station" / "elevation_cache.json"
 
