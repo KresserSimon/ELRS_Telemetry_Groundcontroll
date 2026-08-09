@@ -56,6 +56,37 @@ def fetch_elevations(points: List[Tuple[float, float]]) -> List[float]:
     return elevations
 
 
+def route_elevation_profile(
+    waypoints: List[Waypoint],
+    home_lat: Optional[float] = None,
+    home_lon: Optional[float] = None,
+) -> Tuple[List[float], List[float]]:
+    """Return (terrain_elevations, predicted_altitudes) per waypoint, both in
+    metres MSL - the shared fetch behind check_terrain_clearance() (which
+    only needs their difference) and the elevation-profile chart (which
+    needs both series to plot terrain vs. planned flight path separately).
+
+    Waypoint.alt is height above home (see ui/route_editor_overlay.py), so
+    this first resolves a home elevation - either at the given home_lat/lon
+    (pass the live telemetry home fix when one exists) or, failing that, at
+    the route's own first waypoint, since a planned route commonly starts at
+    the launch point. Home elevation plus each waypoint's alt gives its
+    predicted absolute (MSL) altitude.
+    """
+    if not waypoints:
+        return [], []
+
+    if home_lat is None or home_lon is None:
+        home_lat, home_lon = waypoints[0].lat, waypoints[0].lon
+
+    points = [(home_lat, home_lon)] + [(wp.lat, wp.lon) for wp in waypoints]
+    elevations = fetch_elevations(points)
+    home_elevation, terrain = elevations[0], elevations[1:]
+
+    predicted_altitudes = [home_elevation + (wp.alt if wp.alt is not None else 0.0) for wp in waypoints]
+    return terrain, predicted_altitudes
+
+
 def check_terrain_clearance(
     waypoints: List[Waypoint],
     home_lat: Optional[float] = None,
@@ -67,27 +98,6 @@ def check_terrain_clearance(
     the terrain (a hill/mountain slope, typically, since that's the case
     where a constant-looking "height above home" profile intersects rising
     ground).
-
-    Waypoint.alt is height above home (see ui/route_editor_overlay.py), so
-    this first resolves a home elevation - either at the given home_lat/lon
-    (pass the live telemetry home fix when one exists) or, failing that, at
-    the route's own first waypoint, since a planned route commonly starts at
-    the launch point. Home elevation plus each waypoint's alt gives its
-    predicted absolute (MSL) altitude, compared against the terrain
-    elevation sampled directly under that waypoint.
     """
-    if not waypoints:
-        return []
-
-    if home_lat is None or home_lon is None:
-        home_lat, home_lon = waypoints[0].lat, waypoints[0].lon
-
-    points = [(home_lat, home_lon)] + [(wp.lat, wp.lon) for wp in waypoints]
-    elevations = fetch_elevations(points)
-    home_elevation, terrain = elevations[0], elevations[1:]
-
-    clearances = []
-    for wp, ground in zip(waypoints, terrain):
-        predicted_alt = home_elevation + (wp.alt if wp.alt is not None else 0.0)
-        clearances.append(predicted_alt - ground)
-    return clearances
+    terrain, predicted_altitudes = route_elevation_profile(waypoints, home_lat, home_lon)
+    return [predicted - ground for predicted, ground in zip(predicted_altitudes, terrain)]

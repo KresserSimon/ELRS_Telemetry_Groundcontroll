@@ -23,6 +23,8 @@ from core import i18n
 from core.dashboard_config import save_dashboard_layout, save_visible_fields
 from core.home_config import load_home_position, save_home_position
 from core.nfz import NoFlyZoneManager
+from core.openaip_config import load_openaip_config, save_openaip_config
+from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_to_zones
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
 from export.flight_logger import ALL_FIELDS, FlightLogger
@@ -38,11 +40,13 @@ from ui.battery_settings_dialog import BatterySettingsDialog
 from ui.connection_dialog import ConnectionSettingsDialog
 from ui.dashboard import Dashboard
 from ui.dashboard_settings_dialog import DashboardSettingsDialog
+from ui.elevation_profile_dialog import ElevationProfileDialog
 from ui.flight_log_dialog import FlightLogSettingsDialog
 from ui.home_position_dialog import HomePositionDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_buttons import HeadingModeButton, LockButton
 from ui.map_widget import MapWidget
+from ui.openaip_settings_dialog import OpenAipSettingsDialog
 from ui.route_editor_overlay import RouteEditorOverlay
 from ui.track_overlay import TrackOverlay
 
@@ -249,6 +253,15 @@ class MainWindow(QMainWindow):
         self._nfz_visible_action.setChecked(True)
         self._nfz_visible_action.toggled.connect(self._map.set_nfz_visible)
 
+        nfz_menu.addSeparator()
+        openaip_settings_action = nfz_menu.addAction("")
+        self._i18n_actions.append((openaip_settings_action, "menu_nfz_openaip_settings"))
+        openaip_settings_action.triggered.connect(self._open_openaip_settings)
+
+        openaip_load_action = nfz_menu.addAction("")
+        self._i18n_actions.append((openaip_load_action, "menu_nfz_openaip_load"))
+        openaip_load_action.triggered.connect(self._load_openaip_zones)
+
         # ----------------------------------------------- Anzeige & Karte
         view_map_menu = menu.addMenu("")
         self._i18n_menus.append((view_map_menu, "menu_map"))
@@ -379,6 +392,11 @@ class MainWindow(QMainWindow):
         self._plan_action.setCheckable(True)
         self._plan_action.setChecked(self._plan_mode)
         self._plan_action.toggled.connect(self._toggle_plan_mode)
+
+        sim_menu.addSeparator()
+        elevation_profile_action = sim_menu.addAction("")
+        self._i18n_actions.append((elevation_profile_action, "menu_elevation_profile"))
+        elevation_profile_action.triggered.connect(self._open_elevation_profile)
 
         # ------------------------------------------------- Einstellungen
         settings_menu = menu.addMenu("")
@@ -598,6 +616,18 @@ class MainWindow(QMainWindow):
         self._map.center_on_point(lat, lon)
         self.statusBar().showMessage(i18n.tr("status_home_position_saved"), 5000)
 
+    def _open_elevation_profile(self) -> None:
+        if not self._route_manager.waypoints():
+            QMessageBox.warning(self, i18n.tr("msgbox_no_route_title"), i18n.tr("msgbox_no_route_body"))
+            return
+
+        home = None
+        if self._last_telemetry_state is not None and self._last_telemetry_state.has_gps_fix():
+            home = (self._last_telemetry_state.lat, self._last_telemetry_state.lon)
+
+        dialog = ElevationProfileDialog(self._route_manager, home, self)
+        dialog.exec()
+
     def _open_manual(self) -> None:
         path = self._manual_pdf_path()
         if not path.is_file():
@@ -788,6 +818,43 @@ class MainWindow(QMainWindow):
 
         self._nfz_manager.set_all(zones)
         self.statusBar().showMessage(i18n.tr("status_nfz_imported", count=len(zones)), 5000)
+
+    def _open_openaip_settings(self) -> None:
+        config = load_openaip_config()
+        dialog = OpenAipSettingsDialog(config["api_key"], config["base_url"], config["preferred_types"], self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        save_openaip_config(dialog.api_key(), dialog.base_url(), dialog.preferred_types())
+
+    def _load_openaip_zones(self) -> None:
+        config = load_openaip_config()
+        if not config["api_key"]:
+            QMessageBox.warning(self, i18n.tr("msgbox_openaip_no_key_title"), i18n.tr("msgbox_openaip_no_key_body"))
+            return
+
+        position = None
+        if self._last_telemetry_state is not None and self._last_telemetry_state.has_gps_fix():
+            position = (self._last_telemetry_state.lat, self._last_telemetry_state.lon)
+        elif load_home_position() is not None:
+            position = load_home_position()
+        if position is None:
+            QMessageBox.warning(
+                self, i18n.tr("msgbox_openaip_no_position_title"), i18n.tr("msgbox_openaip_no_position_body")
+            )
+            return
+
+        self.setCursor(Qt.CursorShape.WaitCursor)
+        try:
+            geojson = fetch_airspaces_geojson(config["base_url"], config["api_key"], position[0], position[1])
+        except OpenAipError as exc:
+            QMessageBox.critical(self, i18n.tr("msgbox_openaip_failed_title"), str(exc))
+            return
+        finally:
+            self.unsetCursor()
+
+        zones = geojson_to_zones(geojson, config["preferred_types"])
+        self._nfz_manager.set_all(zones)
+        self.statusBar().showMessage(i18n.tr("status_openaip_loaded", count=len(zones)), 5000)
 
     # --------------------------------------------------------------- track
 

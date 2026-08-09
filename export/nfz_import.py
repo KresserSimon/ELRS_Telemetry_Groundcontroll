@@ -25,6 +25,26 @@ def import_nfz_file(path: str) -> List[NoFlyZone]:
     return import_nfz_geojson(path)
 
 
+def polygon_rings_from_geometry(geometry: dict) -> List[List[tuple]]:
+    """[(lat, lon), ...] rings for a GeoJSON Polygon or MultiPolygon geometry
+    - only the outer ring of each polygon, since NoFlyZone doesn't model
+    holes. Returns [] for any other geometry type. Shared by the file-based
+    import below and core/openaip_import.py's network fetch, since both deal
+    in the same GeoJSON Polygon/MultiPolygon shape.
+    """
+    coords = geometry.get("coordinates")
+    gtype = geometry.get("type")
+    if coords is None:
+        return []
+    if gtype == "Polygon":
+        rings = [coords[0]]
+    elif gtype == "MultiPolygon":
+        rings = [poly[0] for poly in coords]
+    else:
+        return []
+    return [[(pt[1], pt[0]) for pt in ring] for ring in rings]  # GeoJSON coordinates are [lon, lat]
+
+
 def import_nfz_geojson(path: str) -> List[NoFlyZone]:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -37,21 +57,8 @@ def import_nfz_geojson(path: str) -> List[NoFlyZone]:
     for feature in features:
         geometry = feature.get("geometry") or {}
         props = feature.get("properties") or {}
-        gtype = geometry.get("type")
-        coords = geometry.get("coordinates")
-        if coords is None:
-            continue
-
-        if gtype == "Polygon":
-            rings = [coords[0]]
-        elif gtype == "MultiPolygon":
-            rings = [poly[0] for poly in coords]
-        else:
-            continue
-
-        for ring in rings:
+        for points in polygon_rings_from_geometry(geometry):
             name = str(props.get("name") or props.get("Name") or f"Zone {len(zones) + 1}")
-            points = [(pt[1], pt[0]) for pt in ring]  # GeoJSON coordinates are [lon, lat]
             zones.append(NoFlyZone(name=name, kind="polygon", points=points))
 
     if not zones:
