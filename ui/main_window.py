@@ -251,6 +251,12 @@ class MainWindow(QMainWindow):
         self._route_editor_action.toggled.connect(self._route_overlay.setVisible)
         self._route_overlay.closed.connect(lambda: self._route_editor_action.setChecked(False))
 
+        self._route_editor_dock_action = route_menu.addAction("")
+        self._i18n_actions.append((self._route_editor_dock_action, "menu_route_edit_dock"))
+        self._route_editor_dock_action.setCheckable(True)
+        self._route_editor_dock_action.setChecked(False)
+        self._route_editor_dock_action.toggled.connect(self._set_route_editor_docked)
+
         route_menu.addSeparator()
         import_route_action = route_menu.addAction("")
         self._i18n_actions.append((import_route_action, "menu_route_import"))
@@ -352,6 +358,12 @@ class MainWindow(QMainWindow):
         self._altitude_track_action.toggled.connect(self._altitude_track_overlay.setVisible)
         self._altitude_track_overlay.closed.connect(lambda: self._altitude_track_action.setChecked(False))
 
+        self._altitude_track_dock_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._altitude_track_dock_action, "menu_altitude_track_dock"))
+        self._altitude_track_dock_action.setCheckable(True)
+        self._altitude_track_dock_action.setChecked(False)
+        self._altitude_track_dock_action.toggled.connect(self._set_altitude_track_docked)
+
         self._track_overlay_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._track_overlay_action, "menu_track_overlay"))
         self._track_overlay_action.setCheckable(True)
@@ -378,6 +390,12 @@ class MainWindow(QMainWindow):
         horizon_toggle_action.setChecked(True)
         horizon_toggle_action.toggled.connect(self._horizon.setVisible)
         self._horizon.closed.connect(lambda: horizon_toggle_action.setChecked(False))
+
+        self._horizon_dock_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._horizon_dock_action, "menu_horizon_dock"))
+        self._horizon_dock_action.setCheckable(True)
+        self._horizon_dock_action.setChecked(False)
+        self._horizon_dock_action.toggled.connect(self._set_horizon_docked)
 
         horizon_pos_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((horizon_pos_menu, "menu_view_horizon_position"))
@@ -833,6 +851,36 @@ class MainWindow(QMainWindow):
             self._splitter.insertWidget(1, self._dashboard)
         self._splitter.setStretchFactor(self._splitter.indexOf(self._map), 1)
         self._splitter.setStretchFactor(self._splitter.indexOf(self._dashboard), 0)
+
+    def _set_horizon_docked(self, docked: bool) -> None:
+        if docked:
+            self._map.remove_overlay(self._horizon)
+            self._horizon.set_docked(True)
+            self._dashboard.set_top_docked(self._horizon, True)
+        else:
+            self._dashboard.set_top_docked(self._horizon, False)
+            self._horizon.set_docked(False)
+            self._map.add_overlay(self._horizon, DEFAULT_HORIZON_CORNER)
+
+    def _set_altitude_track_docked(self, docked: bool) -> None:
+        if docked:
+            self._map.remove_overlay(self._altitude_track_overlay)
+            self._altitude_track_overlay.set_docked(True)
+            self._dashboard.set_top_docked(self._altitude_track_overlay, True)
+        else:
+            self._dashboard.set_top_docked(self._altitude_track_overlay, False)
+            self._altitude_track_overlay.set_docked(False)
+            self._map.add_overlay(self._altitude_track_overlay, "top-left")
+
+    def _set_route_editor_docked(self, docked: bool) -> None:
+        if docked:
+            self._map.remove_overlay(self._route_overlay)
+            self._route_overlay.set_docked(True)
+            self._dashboard.set_bottom_docked(self._route_overlay, True)
+        else:
+            self._dashboard.set_bottom_docked(self._route_overlay, False)
+            self._route_overlay.set_docked(False)
+            self._map.add_overlay(self._route_overlay, "bottom-left")
 
     def _open_flight_log_settings(self) -> None:
         dialog = FlightLogSettingsDialog(self._log_fields, self._log_interval, self)

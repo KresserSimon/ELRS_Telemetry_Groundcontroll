@@ -102,8 +102,20 @@ class DraggableOverlay(QWidget):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self._drag_start = None
+        self._docked = False
         self._resize_grip = _ResizeGrip(self)
         self._close_button = _CloseButton(self)
+
+    def set_docked(self, docked: bool) -> None:
+        """Toggle between floating-on-the-map behaviour (drag to move,
+        drag the corner grip to resize) and being embedded in a fixed slot
+        elsewhere (e.g. the telemetry dashboard), where a parent layout -
+        not the user's mouse - controls position and size. The close
+        button keeps working either way; only dragging and the resize
+        grip are floating-only."""
+        self._docked = docked
+        self._resize_grip.setVisible(not docked)
+        self.setCursor(Qt.CursorShape.ArrowCursor if docked else Qt.CursorShape.OpenHandCursor)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -143,6 +155,8 @@ class DraggableOverlay(QWidget):
             parent.reposition_overlays()
 
     def mousePressEvent(self, event) -> None:
+        if self._docked:
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start = event.position().toPoint()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
@@ -152,7 +166,7 @@ class DraggableOverlay(QWidget):
             event.accept()
 
     def mouseMoveEvent(self, event) -> None:
-        if self._drag_start is None or not (event.buttons() & Qt.MouseButton.LeftButton):
+        if self._docked or self._drag_start is None or not (event.buttons() & Qt.MouseButton.LeftButton):
             return
         delta = event.position().toPoint() - self._drag_start
         new_pos = self.pos() + delta
@@ -166,6 +180,8 @@ class DraggableOverlay(QWidget):
         event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._docked:
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start = None
             self.setCursor(Qt.CursorShape.OpenHandCursor)

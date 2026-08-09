@@ -110,9 +110,37 @@ class Dashboard(QWidget):
         self._home = None       # (lat, lon) of the first GPS fix this session
         self._flight_start = None  # time.monotonic() at that first fix
 
-        self._outer = QVBoxLayout(self)
-        self._outer.setContentsMargins(8, 6, 8, 6)
+        # Fixed wrapper of three sections: an optional top dock row (e.g.
+        # the artificial horizon and/or altitude chart, docked in from the
+        # map), the field matrix in the middle (apply_layout() rebuilds
+        # only this part), and an optional bottom dock (e.g. the waypoint
+        # editor). Kept as separate always-present containers rather than
+        # inserting docked widgets directly into the matrix layout, since
+        # apply_layout() tears down and rebuilds that layout's contents on
+        # every field/row/orientation change and would otherwise discard
+        # them.
+        self._top_dock_widget = QWidget()
+        self._top_dock_layout = QHBoxLayout(self._top_dock_widget)
+        self._top_dock_layout.setContentsMargins(0, 0, 0, 0)
+        self._top_dock_layout.setSpacing(8)
+        self._top_dock_widget.setVisible(False)
+
+        self._bottom_dock_widget = QWidget()
+        self._bottom_dock_layout = QVBoxLayout(self._bottom_dock_widget)
+        self._bottom_dock_layout.setContentsMargins(0, 0, 0, 0)
+        self._bottom_dock_widget.setVisible(False)
+
+        self._matrix_container = QWidget()
+        self._outer = QVBoxLayout(self._matrix_container)
+        self._outer.setContentsMargins(0, 0, 0, 0)
         self._outer.setSpacing(4)
+
+        wrapper = QVBoxLayout(self)
+        wrapper.setContentsMargins(8, 6, 8, 6)
+        wrapper.setSpacing(8)
+        wrapper.addWidget(self._top_dock_widget)
+        wrapper.addWidget(self._matrix_container, 1)
+        wrapper.addWidget(self._bottom_dock_widget)
 
         self.gps_lat = _Field("dash_lat")
         self.gps_lon = _Field("dash_lon")
@@ -237,6 +265,29 @@ class Dashboard(QWidget):
                 self._rebuild_box_layout(box, vertical)
         self.apply_layout(self._group_order, self._rows)
 
+    def set_top_docked(self, widget: QWidget, docked: bool) -> None:
+        """Embed (or remove) a widget in the row above the field matrix -
+        used for the artificial horizon and the altitude chart, which the
+        caller (MainWindow) otherwise floats as map overlays."""
+        if docked:
+            widget.setParent(self._top_dock_widget)
+            self._top_dock_layout.addWidget(widget)
+            widget.show()
+        else:
+            self._top_dock_layout.removeWidget(widget)
+        self._top_dock_widget.setVisible(self._top_dock_layout.count() > 0)
+
+    def set_bottom_docked(self, widget: QWidget, docked: bool) -> None:
+        """Embed (or remove) a widget in the section below the field
+        matrix - used for the waypoint editor."""
+        if docked:
+            widget.setParent(self._bottom_dock_widget)
+            self._bottom_dock_layout.addWidget(widget)
+            widget.show()
+        else:
+            self._bottom_dock_layout.removeWidget(widget)
+        self._bottom_dock_widget.setVisible(self._bottom_dock_layout.count() > 0)
+
     # ------------------------------------------------------- configuration
 
     def field_catalog(self) -> list:
@@ -295,9 +346,9 @@ class Dashboard(QWidget):
                     w.deleteLater()
             QWidget().setLayout(old_outer)
             self._outer = wanted_outer_cls()
-            self._outer.setContentsMargins(8, 6, 8, 6)
+            self._outer.setContentsMargins(0, 0, 0, 0)
             self._outer.setSpacing(4)
-            self.setLayout(self._outer)
+            self._matrix_container.setLayout(self._outer)
         else:
             while self._outer.count():
                 item = self._outer.takeAt(0)

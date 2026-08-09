@@ -56,6 +56,14 @@ class MapWidget(QWebEngineView):
         self._reposition_overlays()
         widget.raise_()
 
+    def remove_overlay(self, widget) -> None:
+        """Detach a widget previously added via add_overlay() - used when
+        docking it elsewhere (e.g. into the telemetry dashboard) instead of
+        floating on the map. Leaves the widget's parent untouched; the
+        caller is expected to reparent it immediately afterwards."""
+        self._overlays = [entry for entry in self._overlays if entry[0] is not widget]
+        self._reposition_overlays()
+
     def set_overlay_corner(self, widget, corner: str) -> None:
         for entry in self._overlays:
             if entry[0] is widget:
