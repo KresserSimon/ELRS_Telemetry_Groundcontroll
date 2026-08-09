@@ -9,6 +9,7 @@ from PyQt6.QtGui import QActionGroup, QDesktopServices, QIcon
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
+    QInputDialog,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -70,6 +71,10 @@ HEARTBEAT_TIMEOUT_S = 3.0
 # jitter while parked, low enough to catch the start of a real flight
 # promptly.
 AUTO_TRACK_THRESHOLD_M = 3.0
+# Minimum drone movement (in meters) before a new track/flight-path point is
+# recorded on the map - user-configurable via "Anzeige & Karte" ->
+# "Karten-Performance...".
+DEFAULT_PATH_POINT_THRESHOLD_M = 1.5
 
 VEHICLE_TYPES = (("vehicle_quad", "quad"), ("vehicle_wing", "wing"), ("vehicle_plane", "plane"))
 LANGUAGES = (("language_de", "de"), ("language_en", "en"))
@@ -105,6 +110,9 @@ class MainWindow(QMainWindow):
         self._ui_state = load_ui_state()
         lang = getattr(args, "lang", None) or self._ui_state.get("language") or "de"
         i18n.set_language(lang)
+        self._path_point_threshold_m = self._ui_state.get(
+            "path_point_threshold_m", DEFAULT_PATH_POINT_THRESHOLD_M
+        )
 
         self.setWindowTitle("ELRS Ground Station")
         self.resize(1200, 800)
@@ -239,6 +247,7 @@ class MainWindow(QMainWindow):
             self._map.set_nfz_visible(self._nfz_visible_action.isChecked())
             self._map.set_base_layer(self._ui_state.get("base_layer", "osm"))
             self._map.set_vehicle_type(self._ui_state.get("vehicle_type", "quad"))
+            self._map.set_path_point_threshold(self._path_point_threshold_m)
 
         self._map.page().loadFinished.connect(_apply_initial_map_js_state)
         self._horizon.setVisible(self._horizon_toggle_action.isChecked())
@@ -441,6 +450,10 @@ class MainWindow(QMainWindow):
         self._heatmap_action.setCheckable(True)
         self._heatmap_action.setChecked(self._ui_state.get("heatmap", False))
         self._heatmap_action.toggled.connect(self._map.set_heatmap_enabled)
+
+        map_performance_action = view_map_menu.addAction("")
+        self._i18n_actions.append((map_performance_action, "menu_map_performance"))
+        map_performance_action.triggered.connect(self._open_map_performance_settings)
 
         self._altitude_track_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._altitude_track_action, "menu_altitude_track"))
@@ -776,6 +789,22 @@ class MainWindow(QMainWindow):
         self._battery_low_v = dialog.low_cell_voltage()
         self._battery_critical_v = dialog.critical_cell_voltage()
         self._battery_monitor.configure(self._battery_cells, self._battery_low_v, self._battery_critical_v)
+
+    def _open_map_performance_settings(self) -> None:
+        value, ok = QInputDialog.getDouble(
+            self,
+            i18n.tr("map_performance_dialog_title"),
+            i18n.tr("map_performance_threshold_label"),
+            self._path_point_threshold_m,
+            0.1,
+            100.0,
+            1,
+        )
+        if not ok:
+            return
+        self._path_point_threshold_m = value
+        self._map.set_path_point_threshold(value)
+        self._persist_ui_state()
 
     def _open_tracker_output(self) -> None:
         dialog = TrackerOutputDialog(self._tracker_output_sender, self)
@@ -1286,6 +1315,7 @@ class MainWindow(QMainWindow):
             "altitude_track_docked": self._altitude_track_dock_action.isChecked(),
             "altitude_track_size": [self._altitude_track_overlay.width(), self._altitude_track_overlay.height()],
             "language": i18n.get_language(),
+            "path_point_threshold_m": self._path_point_threshold_m,
         }
 
     def _persist_ui_state(self, *_args) -> None:

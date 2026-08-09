@@ -9,7 +9,18 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+
+# Must be set before QtWebEngine is imported anywhere (it reads this env var
+# once, at module import time, to configure Chromium) - hardware-accelerated
+# rasterization/canvas noticeably smooths panning and drone-icon redraws on
+# the embedded Leaflet map, especially on lower-end GPUs / software-render
+# fallback machines.
+_PERF_CHROMIUM_FLAGS = "--enable-gpu-rasterization --ignore-gpu-blocklist --enable-accelerated-2d-canvas"
+_existing_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+if _PERF_CHROMIUM_FLAGS not in _existing_flags:
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = f"{_existing_flags} {_PERF_CHROMIUM_FLAGS}".strip()
 
 
 def parse_args(argv=None) -> argparse.Namespace:

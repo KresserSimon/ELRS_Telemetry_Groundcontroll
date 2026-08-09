@@ -131,6 +131,12 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
   var pathLatLngs = [];
   var pathLine = L.polyline([], { color: '#ff8000', weight: 3 }).addTo(map);
+  var lastPathPoint = null;
+  var pathPointThresholdM = 1.5;
+
+  function setPathPointThreshold(meters) {
+    pathPointThresholdM = meters;
+  }
 
   // ------------------------------------------------- RSSI/LQ heatmap track
   //
@@ -295,8 +301,14 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
   function updateDrone(lat, lon, heading, linkQuality) {
     var latlng = [lat, lon];
-    pathLatLngs.push(latlng);
-    pathLine.setLatLngs(pathLatLngs);
+    // Only record a new path/track point once the drone has actually moved
+    // a meaningful distance - otherwise GPS jitter while sitting still (or
+    // a high telemetry rate) fills the polyline with redundant points.
+    if (lastPathPoint === null || L.latLng(latlng).distanceTo(lastPathPoint) >= pathPointThresholdM) {
+      pathLatLngs.push(latlng);
+      pathLine.setLatLngs(pathLatLngs);
+      lastPathPoint = latlng;
+    }
 
     if (heatmapEnabled) {
       if (lastHeatPoint !== null) {
@@ -370,6 +382,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
   function clearPath() {
     pathLatLngs = [];
+    lastPathPoint = null;
     pathLine.setLatLngs([]);
     heatSegments.forEach(function (seg) { map.removeLayer(seg); });
     heatSegments = [];

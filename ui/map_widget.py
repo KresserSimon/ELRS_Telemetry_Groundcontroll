@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 from typing import Iterable, List, Optional
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from core import i18n
@@ -18,12 +20,27 @@ from ui.tile_cache_handler import TileCacheSchemeHandler
 OVERLAY_MARGIN = 10
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 
+DISK_CACHE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB, per the offline-tile-cache sizing goal
+POSITION_UPDATE_INTERVAL_MS = 200  # throttle JS map updates to max 5 Hz
+DEFAULT_PATH_POINT_THRESHOLD_M = 1.5
+
 
 class MapWidget(QWebEngineView):
     def __init__(self, parent=None, home_lat: Optional[float] = None, home_lon: Optional[float] = None) -> None:
         super().__init__(parent)
         self._auto_center = True
         self._overlays: list = []  # [[widget, corner], ...]
+        self._pending_position: Optional[tuple] = None
+
+        # A plain self.page().profile() is an anonymous, off-the-record
+        # profile whose HTTP cache always stays in-memory regardless of
+        # setHttpCacheType() - only an explicitly named (persistent) profile
+        # actually keeps a disk-backed cache across launches, which is what
+        # the 500MB disk cache setting below is for.
+        self._profile = QWebEngineProfile("elrs_ground_station_map", self)
+        self._profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+        self._profile.setHttpCacheMaximumSize(DISK_CACHE_MAX_BYTES)
+        self.setPage(QWebEnginePage(self._profile, self))
 
         self.route_bridge = RouteBridge()
         self._channel = QWebChannel(self.page())
@@ -31,7 +48,16 @@ class MapWidget(QWebEngineView):
         self.page().setWebChannel(self._channel)
 
         self._tile_cache_handler = TileCacheSchemeHandler(self)
-        self.page().profile().installUrlSchemeHandler(TILE_CACHE_SCHEME, self._tile_cache_handler)
+        self._profile.installUrlSchemeHandler(TILE_CACHE_SCHEME, self._tile_cache_handler)
+
+        # Telemetry can arrive far faster than the map needs to visually
+        # update - coalesce to the latest position and flush it to the JS
+        # side at a fixed, gentle rate instead of one runJavaScript() call
+        # per telemetry tick.
+        self._position_timer = QTimer(self)
+        self._position_timer.setInterval(POSITION_UPDATE_INTERVAL_MS)
+        self._position_timer.timeout.connect(self._flush_position)
+        self._position_timer.start()
 
         html_kwargs = {
             "label_waypoint": i18n.tr("mapctx_waypoint"),
@@ -121,9 +147,19 @@ class MapWidget(QWebEngineView):
     def update_position(
         self, lat: float, lon: float, heading: Optional[float], link_quality: Optional[int] = None
     ) -> None:
+        self._pending_position = (lat, lon, heading, link_quality)
+
+    def _flush_position(self) -> None:
+        if self._pending_position is None:
+            return
+        lat, lon, heading, link_quality = self._pending_position
+        self._pending_position = None
         heading_js = "null" if heading is None else f"{heading}"
         lq_js = "null" if link_quality is None else f"{link_quality}"
         self.page().runJavaScript(f"updateDrone({lat}, {lon}, {heading_js}, {lq_js});")
+
+    def set_path_point_threshold(self, meters: float) -> None:
+        self.page().runJavaScript(f"setPathPointThreshold({meters});")
 
     def set_auto_center(self, enabled: bool) -> None:
         self._auto_center = enabled
