@@ -80,7 +80,7 @@ class _CloseButton(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor(255, 255, 255, 170))
-        pen.setWidth(1.4)
+        pen.setWidthF(1.4)
         painter.setPen(pen)
         m, s = 3, self.SIZE
         painter.drawLine(m, m, s - m, s - m)
