@@ -22,6 +22,21 @@ PACK_CAPACITY_MAH = 4000.0
 CRUISE_SPEED_MPS = 2 * math.pi * RADIUS_M / LOOP_PERIOD_S
 
 
+def _heading_for_angle(angle: float) -> float:
+    """Compass bearing (0-360, clockwise from north) of the direction of
+    travel at the given position on the loiter circle (offset_lat_m =
+    RADIUS_M*sin(angle), offset_lon_m = RADIUS_M*cos(angle), angle
+    increasing over time). The velocity's north/east components are the
+    angle-derivatives of those two offsets, and a compass bearing from
+    (east, north) components is atan2(east, north) - not atan2(north, east)
+    or any other argument order, which would silently give the wrong
+    rotational direction and/or a phase-shifted result.
+    """
+    north_component = math.cos(angle)
+    east_component = -math.sin(angle)
+    return (math.degrees(math.atan2(east_component, north_component)) + 360) % 360
+
+
 class DemoWorker(TelemetryWorker):
     def __init__(self, center_lat: float = 48.1372, center_lon: float = 11.5756, cells: int = 4) -> None:
         super().__init__()
@@ -53,9 +68,7 @@ class DemoWorker(TelemetryWorker):
             s.satellites = 11 + random.randint(-1, 1)
             s.gps_fix = 3
 
-            # heading = direction of travel (derivative of the circle position)
-            heading_rad = math.atan2(math.cos(angle), -math.sin(angle))
-            s.heading = (math.degrees(heading_rad) + 360) % 360
+            s.heading = _heading_for_angle(angle)
 
             # constant-radius turn -> constant bank angle, plus a little life via jitter/pitch bob
             s.roll = -18.0 + random.uniform(-1.5, 1.5)
