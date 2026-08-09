@@ -20,12 +20,55 @@ DIM = QColor("#4a5361")
 SIZE = 22
 
 
-def _canvas() -> tuple[QPixmap, QPainter]:
-    pm = QPixmap(SIZE, SIZE)
+def _canvas(size: int = SIZE) -> tuple[QPixmap, QPainter]:
+    pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     return pm, p
+
+
+# Button-scale icons (Start/Pause/Export etc.) are drawn smaller than the
+# 22px dashboard field icons, matching typical QPushButton icon proportions
+# next to a text label.
+BUTTON_SIZE = 15
+
+
+def play_icon() -> QPixmap:
+    """A right-pointing triangle - "start recording"."""
+    pm, p = _canvas(BUTTON_SIZE)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(GOOD)
+    s = BUTTON_SIZE
+    p.drawPolygon(QPolygonF([QPointF(s * 0.28, s * 0.15), QPointF(s * 0.28, s * 0.85), QPointF(s * 0.85, s * 0.5)]))
+    p.end()
+    return pm
+
+
+def pause_icon() -> QPixmap:
+    """Two vertical bars - "pause recording"."""
+    pm, p = _canvas(BUTTON_SIZE)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(WARN)
+    s = BUTTON_SIZE
+    bar_w = s * 0.22
+    p.drawRoundedRect(QRectF(s * 0.22, s * 0.15, bar_w, s * 0.7), 1, 1)
+    p.drawRoundedRect(QRectF(s * 0.56, s * 0.15, bar_w, s * 0.7), 1, 1)
+    p.end()
+    return pm
+
+
+def export_icon() -> QPixmap:
+    """A downward arrow into a tray - "export/save"."""
+    pm, p = _canvas(BUTTON_SIZE)
+    s = BUTTON_SIZE
+    p.setPen(QPen(ACCENT, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    p.drawLine(QPointF(s * 0.5, s * 0.08), QPointF(s * 0.5, s * 0.62))
+    p.drawLine(QPointF(s * 0.28, s * 0.42), QPointF(s * 0.5, s * 0.66))
+    p.drawLine(QPointF(s * 0.72, s * 0.42), QPointF(s * 0.5, s * 0.66))
+    p.drawLine(QPointF(s * 0.12, s * 0.88), QPointF(s * 0.88, s * 0.88))
+    p.end()
+    return pm
 
 
 def gps_icon() -> QPixmap:

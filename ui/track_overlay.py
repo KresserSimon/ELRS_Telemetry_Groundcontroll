@@ -6,10 +6,12 @@ policy decisions to MainWindow and only display + request.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from core import i18n
+from ui import icons
 from ui.draggable_overlay import DraggableOverlay
 
 PANEL_BG = "rgba(18, 22, 28, 235)"
@@ -43,9 +45,14 @@ class TrackOverlay(DraggableOverlay):
         self._status_label.setStyleSheet("color: #c7cfda; font-size: 10px; background: transparent;")
         self._status_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
+        icon_size = QSize(icons.BUTTON_SIZE, icons.BUTTON_SIZE)
+
         self._toggle_btn = QPushButton()
+        self._toggle_btn.setIconSize(icon_size)
         self._toggle_btn.clicked.connect(self.start_pause_clicked)
         self._export_btn = QPushButton()
+        self._export_btn.setIcon(QIcon(icons.export_icon()))
+        self._export_btn.setIconSize(icon_size)
         self._export_btn.clicked.connect(self.export_clicked)
 
         btn_row = QHBoxLayout()
@@ -75,6 +82,7 @@ class TrackOverlay(DraggableOverlay):
         self._title_label.setText(i18n.tr("track_title"))
         self._update_status_text()
         self._toggle_btn.setText(i18n.tr("track_pause_btn" if self._recording else "track_start_btn"))
+        self._toggle_btn.setIcon(QIcon(icons.pause_icon() if self._recording else icons.play_icon()))
         self._export_btn.setText(i18n.tr("track_export_btn"))
 
     def _update_status_text(self) -> None:
