@@ -142,6 +142,11 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   var pathLine = L.polyline([], { color: '#ff8000', weight: 3 }).addTo(map);
   var lastPathPoint = null;
   var pathPointThresholdM = 1.5;
+  // Keeps render cost bounded across a very long flight - once over the
+  // cap, every other point/segment is dropped, halving resolution but
+  // keeping the full flight visible instead of scrolling the earliest
+  // part away (same approach as the altitude chart's MAX_SAMPLES).
+  var MAX_PATH_POINTS = 2000;
 
   function setPathPointThreshold(meters) {
     pathPointThresholdM = meters;
@@ -352,6 +357,9 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     // a high telemetry rate) fills the polyline with redundant points.
     if (lastPathPoint === null || L.latLng(latlng).distanceTo(lastPathPoint) >= pathPointThresholdM) {
       pathLatLngs.push(latlng);
+      if (pathLatLngs.length > MAX_PATH_POINTS) {
+        pathLatLngs = pathLatLngs.filter(function (_, i) { return i % 2 === 0; });
+      }
       pathLine.setLatLngs(pathLatLngs);
       lastPathPoint = latlng;
     }
@@ -363,6 +371,13 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
           weight: 4,
         }).addTo(map);
         heatSegments.push(seg);
+        if (heatSegments.length > MAX_PATH_POINTS) {
+          var kept = [];
+          heatSegments.forEach(function (s, i) {
+            if (i % 2 === 0) { kept.push(s); } else { map.removeLayer(s); }
+          });
+          heatSegments = kept;
+        }
       }
       lastHeatPoint = latlng;
     }
