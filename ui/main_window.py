@@ -28,6 +28,7 @@ from core.openaip_config import load_openaip_config, save_openaip_config
 from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_to_zones
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
+from core.tracker_output import TrackerOutputSender
 from export.flight_logger import ALL_FIELDS, FlightLogger
 from export.nfz_import import import_nfz_file
 from export.route_export import export_route_csv, export_route_gpx
@@ -51,6 +52,7 @@ from ui.map_widget import MapWidget
 from ui.openaip_settings_dialog import OpenAipSettingsDialog
 from ui.route_editor_overlay import RouteEditorOverlay
 from ui.track_overlay import TrackOverlay
+from ui.tracker_output_dialog import TrackerOutputDialog
 
 HEARTBEAT_TIMEOUT_S = 3.0
 
@@ -92,6 +94,8 @@ class MainWindow(QMainWindow):
             critical_cell_voltage=args.critical_cell_voltage,
         )
         self._nfz_proximity_monitor = NfzProximityMonitor(self._tts_worker)
+        self._tracker_output_sender = TrackerOutputSender()
+        self._tracker_output_sender.error_occurred.connect(self._on_tracker_output_error)
         self._battery_chemistry = "lipo"
         self._battery_cells = args.cells
         self._battery_low_v = args.low_cell_voltage
@@ -397,6 +401,11 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((battery_settings_action, "menu_battery_settings"))
         battery_settings_action.triggered.connect(self._open_battery_settings)
 
+        telemetry_menu.addSeparator()
+        tracker_output_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((tracker_output_action, "menu_tracker_output"))
+        tracker_output_action.triggered.connect(self._open_tracker_output)
+
         # -------------------------------------------- Tools & Simulation
         sim_menu = menu.addMenu("")
         self._i18n_menus.append((sim_menu, "menu_simulation"))
@@ -620,6 +629,13 @@ class MainWindow(QMainWindow):
         self._battery_critical_v = dialog.critical_cell_voltage()
         self._battery_monitor.configure(self._battery_cells, self._battery_low_v, self._battery_critical_v)
 
+    def _open_tracker_output(self) -> None:
+        dialog = TrackerOutputDialog(self._tracker_output_sender, self)
+        dialog.exec()
+
+    def _on_tracker_output_error(self, message: str) -> None:
+        self.statusBar().showMessage(message, 8000)
+
     def _open_home_settings(self) -> None:
         current = load_home_position()
         live_position = None
@@ -769,6 +785,8 @@ class MainWindow(QMainWindow):
 
         self._battery_monitor.check(state)
         self._check_nfz_proximity(state)
+        if self._tracker_output_sender.is_active():
+            self._tracker_output_sender.send(state)
 
     def _check_nfz_proximity(self, state: TelemetryState) -> None:
         if not self._nfz_proximity_action.isChecked():
@@ -968,4 +986,5 @@ class MainWindow(QMainWindow):
             self._worker.stop()
         self._flight_logger.stop()
         self._tts_worker.stop()
+        self._tracker_output_sender.stop()
         super().closeEvent(event)
