@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from core import i18n
 from ui import icons
@@ -23,7 +23,7 @@ class TrackOverlay(DraggableOverlay):
     export_clicked = pyqtSignal()
 
     MIN_WIDTH = 160
-    MIN_HEIGHT = 90
+    MIN_HEIGHT = 110
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -32,7 +32,7 @@ class TrackOverlay(DraggableOverlay):
             f"TrackOverlay {{ background-color: {PANEL_BG}; "
             f"border: 1px solid {BORDER}; border-radius: 10px; }}"
         )
-        self.resize(210, 110)
+        self.resize(210, 130)
 
         self._recording = False
         self._point_count = 0
@@ -59,12 +59,16 @@ class TrackOverlay(DraggableOverlay):
         btn_row.addWidget(self._toggle_btn)
         btn_row.addWidget(self._export_btn)
 
+        self._auto_checkbox = QCheckBox()
+        self._auto_checkbox.setStyleSheet("color: #c7cfda; font-size: 10px; background: transparent;")
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(4)
         layout.addWidget(self._title_label)
         layout.addWidget(self._status_label)
         layout.addLayout(btn_row)
+        layout.addWidget(self._auto_checkbox)
 
         i18n.on_language_changed(self.retranslate)
         self.retranslate()
@@ -78,12 +82,17 @@ class TrackOverlay(DraggableOverlay):
         self._point_count = point_count
         self._update_status_text()
 
+    def is_auto_enabled(self) -> bool:
+        return self._auto_checkbox.isChecked()
+
     def retranslate(self) -> None:
         self._title_label.setText(i18n.tr("track_title"))
         self._update_status_text()
         self._toggle_btn.setText(i18n.tr("track_pause_btn" if self._recording else "track_start_btn"))
         self._toggle_btn.setIcon(QIcon(icons.pause_icon() if self._recording else icons.play_icon()))
         self._export_btn.setText(i18n.tr("track_export_btn"))
+        self._auto_checkbox.setText(i18n.tr("track_auto_checkbox"))
+        self._auto_checkbox.setToolTip(i18n.tr("track_auto_checkbox_tooltip"))
 
     def _update_status_text(self) -> None:
         status_key = "track_status_recording" if self._recording else "track_status_paused"

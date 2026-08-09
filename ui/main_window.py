@@ -25,6 +25,7 @@ from core.dashboard_config import (
     save_dashboard_position,
     save_visible_fields,
 )
+from core.geo import haversine_distance_m
 from core.home_config import load_home_position, save_home_position
 from core.nfz import NoFlyZoneManager
 from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor
@@ -63,6 +64,11 @@ from ui.track_overlay import TrackOverlay
 from ui.tracker_output_dialog import TrackerOutputDialog
 
 HEARTBEAT_TIMEOUT_S = 3.0
+# How far the model must move from where it last stood still before
+# "Auto" track recording kicks in - high enough to ignore ordinary GPS
+# jitter while parked, low enough to catch the start of a real flight
+# promptly.
+AUTO_TRACK_THRESHOLD_M = 3.0
 
 VEHICLE_TYPES = (("vehicle_quad", "quad"), ("vehicle_wing", "wing"), ("vehicle_plane", "plane"))
 LANGUAGES = (("language_de", "de"), ("language_en", "en"))
@@ -132,6 +138,7 @@ class MainWindow(QMainWindow):
         self._map.add_overlay(self._route_overlay, "bottom-left")
 
         self._track_recording = False
+        self._track_auto_reference_position = None
         self._track_overlay = TrackOverlay()
         self._track_overlay.start_pause_clicked.connect(self._toggle_track_recording)
         self._track_overlay.export_clicked.connect(self._export_track_prompt)
@@ -562,6 +569,7 @@ class MainWindow(QMainWindow):
         self._map.clear_path()
         self._track_recorder.clear()
         self._track_recording = False
+        self._track_auto_reference_position = None
         self._track_overlay.set_state(False, 0)
         self._dashboard.reset_session()
         self._altitude_track_start = None
@@ -594,6 +602,7 @@ class MainWindow(QMainWindow):
             self._map.clear_path()
             self._track_recorder.clear()
             self._track_recording = False
+            self._track_auto_reference_position = None
             self._track_overlay.set_state(False, 0)
             self._altitude_track_start = None
             self._altitude_track_overlay.reset()
@@ -933,6 +942,8 @@ class MainWindow(QMainWindow):
             if self._track_recording:
                 self._track_recorder.add_point(state)
                 self._track_overlay.update_count(len(self._track_recorder))
+            else:
+                self._check_auto_track_start(state)
             self._has_fix = True
             if state.alt is not None:
                 if self._altitude_track_start is None:
@@ -1082,9 +1093,24 @@ class MainWindow(QMainWindow):
 
     def _toggle_track_recording(self) -> None:
         self._track_recording = not self._track_recording
+        # Re-anchor "still standing here" at wherever recording just paused
+        # (or clear it while starting, since it's unused while recording),
+        # so Auto mode measures movement from the right reference point.
+        self._track_auto_reference_position = None
         self._track_overlay.set_state(self._track_recording, len(self._track_recorder))
         key = "status_track_recording_started" if self._track_recording else "status_track_recording_paused"
         self.statusBar().showMessage(i18n.tr(key), 3000)
+
+    def _check_auto_track_start(self, state: TelemetryState) -> None:
+        if not self._track_overlay.is_auto_enabled():
+            self._track_auto_reference_position = None
+            return
+        if self._track_auto_reference_position is None:
+            self._track_auto_reference_position = (state.lat, state.lon)
+            return
+        distance = haversine_distance_m(state.lat, state.lon, *self._track_auto_reference_position)
+        if distance >= AUTO_TRACK_THRESHOLD_M:
+            self._toggle_track_recording()
 
     def _export_track_prompt(self) -> None:
         if len(self._track_recorder) == 0:
