@@ -314,6 +314,12 @@ class MainWindow(QMainWindow):
         self._coord_overlay_action.setChecked(False)
         self._coord_overlay_action.toggled.connect(self._map.set_coord_overlay_visible)
 
+        self._heatmap_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._heatmap_action, "menu_heatmap"))
+        self._heatmap_action.setCheckable(True)
+        self._heatmap_action.setChecked(False)
+        self._heatmap_action.toggled.connect(self._map.set_heatmap_enabled)
+
         vehicle_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((vehicle_menu, "menu_view_vehicle"))
         self._vehicle_group = QActionGroup(self)
@@ -686,6 +692,8 @@ class MainWindow(QMainWindow):
             self._route_editor_action.setChecked(not self._route_editor_action.isChecked())
         elif action == "coords":
             self._coord_overlay_action.setChecked(not self._coord_overlay_action.isChecked())
+        elif action == "heatmap":
+            self._heatmap_action.setChecked(not self._heatmap_action.isChecked())
 
     def _set_horizon_scale(self, action) -> None:
         self._horizon.set_scale(action.data())
@@ -746,7 +754,7 @@ class MainWindow(QMainWindow):
         self._horizon.update_attitude(state.roll, state.pitch)
 
         if state.has_gps_fix():
-            self._map.update_position(state.lat, state.lon, state.heading)
+            self._map.update_position(state.lat, state.lon, state.heading, state.link_quality)
             if self._track_recording:
                 self._track_recorder.add_point(state)
                 self._track_overlay.update_count(len(self._track_recorder))

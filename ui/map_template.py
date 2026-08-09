@@ -1,9 +1,10 @@
 """Self-contained Leaflet/OSM HTML page loaded once into QWebEngineView.
 
 All live updates afterwards go through small JS function calls
-(updateDrone / setAutoCenter / setHeadingMode / clearPath / setVehicleType /
-jumpToDrone / centerOnPoint / setRoute / setRouteMode / setCoordOverlayVisible)
-via runJavaScript(), so the map never reloads and the marker moves smoothly.
+(updateDrone / setAutoCenter / setHeadingMode / setHeatmapEnabled /
+clearPath / setVehicleType / jumpToDrone / centerOnPoint / setRoute /
+setRouteMode / setCoordOverlayVisible) via runJavaScript(), so the map
+never reloads and the marker moves smoothly.
 Route-drawing clicks, the "set home"/view-options context menu entries, and
 the coordinate readout travel the other way (JS -> Python) over a
 QWebChannel bridge registered as `routeBridge`.
@@ -89,6 +90,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
       <button onclick="contextMenuViewAction('heading')">__LABEL_VIEW_HEADING__</button>
       <button onclick="contextMenuViewAction('route_editor')">__LABEL_VIEW_ROUTE_EDITOR__</button>
       <button onclick="contextMenuViewAction('coords')">__LABEL_VIEW_COORDS__</button>
+      <button onclick="contextMenuViewAction('heatmap')">__LABEL_VIEW_HEATMAP__</button>
     </div>
   </div>
 </div>
@@ -117,6 +119,36 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 
   var pathLatLngs = [];
   var pathLine = L.polyline([], { color: '#ff8000', weight: 3 }).addTo(map);
+
+  // ------------------------------------------------- RSSI/LQ heatmap track
+  //
+  // A parallel set of short 2-point colored segments, one per telemetry
+  // tick, alongside the always-on plain-orange pathLine above - toggling
+  // heatmap mode just swaps which layer is shown, so no track data is ever
+  // lost switching back and forth, and nothing needs to be redrawn/recolored
+  // retroactively.
+  var heatmapEnabled = false;
+  var heatSegments = [];
+  var lastHeatPoint = null;
+
+  function linkQualityColor(lq) {
+    if (lq === null || lq === undefined) return '#888888';
+    if (lq >= 80) return '#2ecc71';
+    if (lq >= 50) return '#f1c40f';
+    return '#e74c3c';
+  }
+
+  function setHeatmapEnabled(enabled) {
+    heatmapEnabled = enabled;
+    if (enabled) {
+      map.removeLayer(pathLine);
+      heatSegments.forEach(function (seg) { seg.addTo(map); });
+      lastHeatPoint = pathLatLngs.length ? pathLatLngs[pathLatLngs.length - 1] : null;
+    } else {
+      heatSegments.forEach(function (seg) { map.removeLayer(seg); });
+      pathLine.addTo(map);
+    }
+  }
 
   var vehicleIcons = {
     quad: '<svg viewBox="0 0 24 24">'
@@ -218,10 +250,21 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     return map.containerPointToLatLng(localPoint);
   }
 
-  function updateDrone(lat, lon, heading) {
+  function updateDrone(lat, lon, heading, linkQuality) {
     var latlng = [lat, lon];
     pathLatLngs.push(latlng);
     pathLine.setLatLngs(pathLatLngs);
+
+    if (heatmapEnabled) {
+      if (lastHeatPoint !== null) {
+        var seg = L.polyline([lastHeatPoint, latlng], {
+          color: linkQualityColor(linkQuality === undefined ? null : linkQuality),
+          weight: 4,
+        }).addTo(map);
+        heatSegments.push(seg);
+      }
+      lastHeatPoint = latlng;
+    }
 
     if (droneMarker === null) {
       droneMarker = L.marker(latlng, { icon: buildIcon() }).addTo(map);
@@ -284,6 +327,9 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   function clearPath() {
     pathLatLngs = [];
     pathLine.setLatLngs([]);
+    heatSegments.forEach(function (seg) { map.removeLayer(seg); });
+    heatSegments = [];
+    lastHeatPoint = null;
     hasCentered = false;
     if (homeMarker) {
       map.removeLayer(homeMarker);
@@ -489,6 +535,7 @@ def get_map_html(
     label_view_heading: str = "Drohnenrichtung/Norden oben",
     label_view_route_editor: str = "Wegpunkt-Editor anzeigen",
     label_view_coords: str = "Koordinaten anzeigen",
+    label_view_heatmap: str = "RSSI/LQ Heatmap",
 ) -> str:
     return (
         MAP_HTML_TEMPLATE
@@ -504,4 +551,5 @@ def get_map_html(
         .replace("__LABEL_VIEW_HEADING__", label_view_heading)
         .replace("__LABEL_VIEW_ROUTE_EDITOR__", label_view_route_editor)
         .replace("__LABEL_VIEW_COORDS__", label_view_coords)
+        .replace("__LABEL_VIEW_HEATMAP__", label_view_heatmap)
     )

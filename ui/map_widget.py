@@ -38,6 +38,7 @@ class MapWidget(QWebEngineView):
             "label_view_heading": i18n.tr("mapctx_view_heading"),
             "label_view_route_editor": i18n.tr("mapctx_view_route_editor"),
             "label_view_coords": i18n.tr("mapctx_view_coords"),
+            "label_view_heatmap": i18n.tr("mapctx_view_heatmap"),
         }
         if home_lat is not None and home_lon is not None:
             html_kwargs["center_lat"] = home_lat
@@ -104,13 +105,19 @@ class MapWidget(QWebEngineView):
             widget.move(x, y)
             widget.raise_()
 
-    def update_position(self, lat: float, lon: float, heading: Optional[float]) -> None:
+    def update_position(
+        self, lat: float, lon: float, heading: Optional[float], link_quality: Optional[int] = None
+    ) -> None:
         heading_js = "null" if heading is None else f"{heading}"
-        self.page().runJavaScript(f"updateDrone({lat}, {lon}, {heading_js});")
+        lq_js = "null" if link_quality is None else f"{link_quality}"
+        self.page().runJavaScript(f"updateDrone({lat}, {lon}, {heading_js}, {lq_js});")
 
     def set_auto_center(self, enabled: bool) -> None:
         self._auto_center = enabled
         self.page().runJavaScript(f"setAutoCenter({'true' if enabled else 'false'});")
+
+    def set_heatmap_enabled(self, enabled: bool) -> None:
+        self.page().runJavaScript(f"setHeatmapEnabled({'true' if enabled else 'false'});")
 
     def set_heading_mode(self, heading_up: bool) -> None:
         self.page().runJavaScript(f"setHeadingMode({'true' if heading_up else 'false'});")
