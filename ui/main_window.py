@@ -79,11 +79,14 @@ DEFAULT_PATH_POINT_THRESHOLD_M = 1.5
 VEHICLE_TYPES = (("vehicle_quad", "quad"), ("vehicle_wing", "wing"), ("vehicle_plane", "plane"))
 LANGUAGES = (("language_de", "de"), ("language_en", "en"))
 BASE_LAYERS = (("maplayer_osm", "osm"), ("maplayer_satellite", "satellite"))
-# Experimental, parallel vector-tile renderer alongside the default
-# Leaflet/raster one - see the migration plan. Switching requires a
-# restart (rebuilding the whole map engine live is not worth the
-# complexity while this is still a Stage 1 feasibility spike).
-MAP_RENDERERS = (("map_renderer_leaflet", "leaflet"), ("map_renderer_maplibre", "maplibre"))
+# The MapLibre/vector option lives in the same exclusive group as the two
+# raster base layers above (all under the "Kartentyp" menu, since from the
+# user's point of view they're all just "which kind of map") even though
+# it behaves differently under the hood: picking it (or picking a raster
+# layer while MapLibre is currently active) switches the whole map engine,
+# not just a live layer, and needs a restart - see _on_layer_selected().
+MAPLIBRE_LAYER_KEY = "maplayer_maplibre"
+MAPLIBRE_LAYER_ID = "maplibre"
 HORIZON_CORNERS = (
     ("horizon_top_left", "top-left"),
     ("horizon_top_right", "top-right"),
@@ -317,7 +320,9 @@ class MainWindow(QMainWindow):
             self._altitude_track_action, self._altitude_track_dock_action,
         ):
             action.toggled.connect(self._persist_ui_state)
-        self._layer_group.triggered.connect(self._persist_ui_state)
+        # _layer_group is deliberately NOT wired here - _on_layer_selected()
+        # already persists explicitly, since a raster-layer pick and a
+        # renderer-engine switch need different handling first (see there).
         self._vehicle_group.triggered.connect(self._persist_ui_state)
         self._horizon_pos_group.triggered.connect(self._persist_ui_state)
         self._horizon_scale_group.triggered.connect(self._persist_ui_state)
@@ -454,28 +459,30 @@ class MainWindow(QMainWindow):
         self._i18n_menus.append((layer_menu, "menu_map_layer"))
         self._layer_group = QActionGroup(self)
         self._layer_group.setExclusive(True)
+        # Remembers the last-picked *raster* layer separately from
+        # whichever entry is currently checked in the 3-way group below -
+        # needed because while "Vektorkarte" is checked, neither "osm" nor
+        # "satellite" is, but switching back to Leaflet should still land
+        # on whichever raster layer was last actually used, not a hardcoded
+        # default.
+        self._selected_base_layer = self._ui_state.get("base_layer", "osm")
         for key, layer_id in BASE_LAYERS:
             action = layer_menu.addAction("")
             self._i18n_actions.append((action, key))
             action.setCheckable(True)
             action.setData(layer_id)
-            action.setChecked(layer_id == self._ui_state.get("base_layer", "osm"))
+            action.setChecked(
+                self._ui_state.get("map_renderer", "leaflet") == "leaflet"
+                and layer_id == self._selected_base_layer
+            )
             self._layer_group.addAction(action)
-        self._layer_group.triggered.connect(lambda action: self._map.set_base_layer(action.data()))
-
-        renderer_menu = view_map_menu.addMenu("")
-        self._i18n_menus.append((renderer_menu, "menu_map_renderer"))
-        self._renderer_group = QActionGroup(self)
-        self._renderer_group.setExclusive(True)
-        current_renderer = self._ui_state.get("map_renderer", "leaflet")
-        for key, renderer_id in MAP_RENDERERS:
-            action = renderer_menu.addAction("")
-            self._i18n_actions.append((action, key))
-            action.setCheckable(True)
-            action.setData(renderer_id)
-            action.setChecked(renderer_id == current_renderer)
-            self._renderer_group.addAction(action)
-        self._renderer_group.triggered.connect(self._on_renderer_selected)
+        maplibre_layer_action = layer_menu.addAction("")
+        self._i18n_actions.append((maplibre_layer_action, MAPLIBRE_LAYER_KEY))
+        maplibre_layer_action.setCheckable(True)
+        maplibre_layer_action.setData(MAPLIBRE_LAYER_ID)
+        maplibre_layer_action.setChecked(self._ui_state.get("map_renderer", "leaflet") == "maplibre")
+        self._layer_group.addAction(maplibre_layer_action)
+        self._layer_group.triggered.connect(self._on_layer_selected)
 
         view_map_menu.addSeparator()
 
@@ -884,13 +891,31 @@ class MainWindow(QMainWindow):
         self._map.set_path_point_threshold(value)
         self._persist_ui_state()
 
-    def _on_renderer_selected(self, action) -> None:
-        # Deliberately no live hot-swap - see MAP_RENDERERS' comment.
-        # Persist immediately (matching every other menu preference) and
-        # just tell the user a restart is needed for it to take effect.
+    def _on_layer_selected(self, action) -> None:
+        layer_id = action.data()
+        # self._map._renderer is what this session actually launched with -
+        # more reliable than re-deriving it from self._ui_state, which is
+        # just the on-disk snapshot from startup and never mutated after.
+        live_renderer = self._map._renderer
+        target_renderer = "maplibre" if layer_id == MAPLIBRE_LAYER_ID else "leaflet"
+
+        if layer_id != MAPLIBRE_LAYER_ID:
+            self._selected_base_layer = layer_id
+
+        if target_renderer == live_renderer:
+            # No engine change needed - a raster layer switch while already
+            # running Leaflet applies live exactly like before; picking
+            # "Vektorkarte" again while it's already active is a no-op.
+            if layer_id != MAPLIBRE_LAYER_ID:
+                self._map.set_base_layer(layer_id)
+            self._persist_ui_state()
+            return
+
+        # Switching the map engine itself can't be done live - see the
+        # migration plan.
         self._persist_ui_state()
         QMessageBox.information(
-            self, i18n.tr("menu_map_renderer"), i18n.tr("map_renderer_restart_required")
+            self, i18n.tr("menu_map_layer"), i18n.tr("map_renderer_restart_required")
         )
 
     def _open_tracker_output(self) -> None:
@@ -1080,11 +1105,21 @@ class MainWindow(QMainWindow):
         # keeps it from growing further on its own as the window resizes.
         # Purely a starting point: the splitter handle stays freely
         # draggable afterwards, same as any other QSplitter pane.
-        # Deferred via singleShot(0): calling setSizes() before the window
-        # has ever been shown (no real geometry/size-hints resolved yet)
-        # doesn't reliably stick - Qt's first-show layout pass can override
-        # it, collapsing one pane to 0. Running it right after the current
-        # event-loop pass finishes (geometry settled) is what actually holds.
+        # Applied twice, deliberately. Right now, synchronously: a fresh
+        # QSplitter defaults new panes to a plain even (or even fully
+        # lopsided, e.g. 0/100) split until something overrides it, and
+        # that raw default is what a slow startup (heavy WebEngine/JS
+        # asset load blocking the GUI thread before anything else runs)
+        # can end up actually painting to the screen - the "telemetry
+        # fills the whole window" flash. Calling it now, using the size
+        # from the resize() already applied above, prevents that flash
+        # even though the window hasn't been shown yet.
+        # And once more, deferred via singleShot(0): calling setSizes()
+        # before the window has ever been shown (no real geometry/size-hints
+        # resolved yet) doesn't reliably stick on its own - Qt's first-show
+        # layout pass can override it, collapsing one pane to 0. Running it
+        # again right after the current event-loop pass finishes (geometry
+        # settled) is what actually holds long-term.
         def _apply_split_ratio() -> None:
             total = self.width() if side_docked else self.height()
             if total <= 0:
@@ -1095,6 +1130,7 @@ class MainWindow(QMainWindow):
             sizes[map_index] = total - dashboard_extent
             self._splitter.setSizes(sizes)
 
+        _apply_split_ratio()
         QTimer.singleShot(0, _apply_split_ratio)
 
     def _set_horizon_docked(self, docked: bool) -> None:
@@ -1436,7 +1472,7 @@ class MainWindow(QMainWindow):
             "heatmap": self._heatmap_action.isChecked(),
             "nfz_visible": self._nfz_visible_action.isChecked(),
             "nfz_proximity": self._nfz_proximity_action.isChecked(),
-            "base_layer": layer_action.data() if layer_action is not None else "osm",
+            "base_layer": self._selected_base_layer,
             "vehicle_type": vehicle_action.data() if vehicle_action is not None else "quad",
             "horizon_visible": self._horizon_toggle_action.isChecked(),
             "horizon_docked": self._horizon_dock_action.isChecked(),
@@ -1455,7 +1491,7 @@ class MainWindow(QMainWindow):
             "path_point_threshold_m": self._path_point_threshold_m,
             "model_profile": self._dashboard.current_model_profile_name(),
             "altitude_track_time_unit": self._altitude_track_overlay.time_unit(),
-            "map_renderer": self._renderer_group.checkedAction().data() if self._renderer_group.checkedAction() else "leaflet",
+            "map_renderer": "maplibre" if layer_action is not None and layer_action.data() == MAPLIBRE_LAYER_ID else "leaflet",
         }
 
     def _persist_ui_state(self, *_args) -> None:
