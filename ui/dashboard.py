@@ -19,6 +19,7 @@ from core.telemetry_state import TelemetryState
 from ui import icons
 
 _NA = "--"
+NEW_PROFILE_SENTINEL = "__new_model__"
 
 # Glass-cockpit palette - matches the dark panel look the map overlays
 # already use, with a cyan "avionics" accent instead of a plain OS theme.
@@ -112,6 +113,9 @@ class Dashboard(QWidget):
     # restoring the last-used one on startup) without that itself
     # re-triggering a profile load.
     model_profile_selected = pyqtSignal(str)
+    # Picking the "+ Neues Modell anlegen" entry - MainWindow opens the
+    # model-profile dialog's create-new flow in response.
+    new_model_profile_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -147,6 +151,7 @@ class Dashboard(QWidget):
         self._model_label.setStyleSheet(f"color: {CAPTION_COLOR}; font-size: 10px;")
         self._model_combo = QComboBox()
         self._model_combo.addItem("", "")
+        self._last_selected_profile_name = ""
         self._model_combo.activated.connect(self._on_model_combo_activated)
         model_row = QHBoxLayout()
         model_row.setContentsMargins(0, 0, 0, 0)
@@ -444,7 +449,13 @@ class Dashboard(QWidget):
 
     def _on_model_combo_activated(self, index: int) -> None:
         name = self._model_combo.itemData(index)
-        if name:
+        if name == NEW_PROFILE_SENTINEL:
+            # An action, not a persistent selection - snap the combo back to
+            # whatever was actually selected before, and let MainWindow open
+            # the model-creation dialog in response.
+            self.set_current_model_profile_name(self._last_selected_profile_name)
+            self.new_model_profile_requested.emit()
+        elif name:
             self.model_profile_selected.emit(name)
 
     def set_model_profile_names(self, names: List[str]) -> None:
@@ -457,13 +468,16 @@ class Dashboard(QWidget):
         self._model_combo.addItem(i18n.tr("dashboard_model_none"), "")
         for name in sorted(names):
             self._model_combo.addItem(name, name)
+        self._model_combo.addItem(i18n.tr("dashboard_model_new"), NEW_PROFILE_SENTINEL)
         self.set_current_model_profile_name(current)
         self._model_combo.blockSignals(False)
 
     def current_model_profile_name(self) -> str:
-        return self._model_combo.currentData() or ""
+        data = self._model_combo.currentData()
+        return data if data and data != NEW_PROFILE_SENTINEL else ""
 
     def set_current_model_profile_name(self, name: str) -> None:
+        self._last_selected_profile_name = name
         index = self._model_combo.findData(name)
         self._model_combo.setCurrentIndex(index if index >= 0 else 0)
 

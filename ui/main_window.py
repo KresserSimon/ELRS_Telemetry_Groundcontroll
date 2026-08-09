@@ -313,6 +313,7 @@ class MainWindow(QMainWindow):
         self._lang_group.triggered.connect(self._persist_ui_state)
         self._track_overlay.auto_toggled.connect(self._persist_ui_state)
         self._dashboard.model_profile_selected.connect(self._on_dashboard_model_selected)
+        self._dashboard.new_model_profile_requested.connect(self._open_model_profiles)
 
         self._last_telemetry_time = 0.0
         self._has_fix = False
