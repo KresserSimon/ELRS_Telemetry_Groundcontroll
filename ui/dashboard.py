@@ -11,7 +11,7 @@ import time
 from typing import Dict, List
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QGroupBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from core import geo, i18n
 from core.dashboard_config import load_dashboard_layout, load_visible_fields
@@ -106,6 +106,13 @@ class Dashboard(QWidget):
     # whatever size it had when docked) to the panel's current width.
     resized = pyqtSignal()
 
+    # Emitted only for user-driven selections (QComboBox.activated, not
+    # currentIndexChanged) - so MainWindow can freely repopulate/reselect
+    # the combo programmatically (e.g. after saving a new profile, or
+    # restoring the last-used one on startup) without that itself
+    # re-triggering a profile load.
+    model_profile_selected = pyqtSignal(str)
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -132,6 +139,23 @@ class Dashboard(QWidget):
         # apply_layout() tears down and rebuilds that layout's contents on
         # every field/row/orientation change and would otherwise discard
         # them.
+        # Model-profile picker - always visible at the top of the telemetry
+        # panel, not just tucked away in a menu dialog, since switching
+        # models mid-session (and getting the right battery thresholds
+        # applied) is a frequent action, not a rare settings change.
+        self._model_label = QLabel()
+        self._model_label.setStyleSheet(f"color: {CAPTION_COLOR}; font-size: 10px;")
+        self._model_combo = QComboBox()
+        self._model_combo.addItem("", "")
+        self._model_combo.activated.connect(self._on_model_combo_activated)
+        model_row = QHBoxLayout()
+        model_row.setContentsMargins(0, 0, 0, 0)
+        model_row.setSpacing(6)
+        model_row.addWidget(self._model_label)
+        model_row.addWidget(self._model_combo, 1)
+        self._model_row_widget = QWidget()
+        self._model_row_widget.setLayout(model_row)
+
         self._top_dock_widget = QWidget()
         self._top_dock_layout = QHBoxLayout(self._top_dock_widget)
         self._top_dock_layout.setContentsMargins(0, 0, 0, 0)
@@ -151,6 +175,7 @@ class Dashboard(QWidget):
         wrapper = QVBoxLayout(self)
         wrapper.setContentsMargins(8, 6, 8, 6)
         wrapper.setSpacing(8)
+        wrapper.addWidget(self._model_row_widget)
         wrapper.addWidget(self._top_dock_widget)
         wrapper.addWidget(self._matrix_container, 1)
         wrapper.addWidget(self._bottom_dock_widget)
@@ -415,6 +440,33 @@ class Dashboard(QWidget):
 
         self._apply_uniform_field_width()
 
+    # ------------------------------------------------------------ profiles
+
+    def _on_model_combo_activated(self, index: int) -> None:
+        name = self._model_combo.itemData(index)
+        if name:
+            self.model_profile_selected.emit(name)
+
+    def set_model_profile_names(self, names: List[str]) -> None:
+        """Repopulate the dropdown (e.g. after a profile was saved/deleted
+        in the model-profile dialog), preserving the current selection if
+        it still exists."""
+        current = self.current_model_profile_name()
+        self._model_combo.blockSignals(True)
+        self._model_combo.clear()
+        self._model_combo.addItem(i18n.tr("dashboard_model_none"), "")
+        for name in sorted(names):
+            self._model_combo.addItem(name, name)
+        self.set_current_model_profile_name(current)
+        self._model_combo.blockSignals(False)
+
+    def current_model_profile_name(self) -> str:
+        return self._model_combo.currentData() or ""
+
+    def set_current_model_profile_name(self, name: str) -> None:
+        index = self._model_combo.findData(name)
+        self._model_combo.setCurrentIndex(index if index >= 0 else 0)
+
     # ------------------------------------------------------------- session
 
     def reset_session(self) -> None:
@@ -427,6 +479,8 @@ class Dashboard(QWidget):
         for field in self._fields:
             field.retranslate()
         self.set_connection_status(self._connected)
+        self._model_label.setText(i18n.tr("dashboard_model_label"))
+        self._model_combo.setItemText(0, i18n.tr("dashboard_model_none"))
 
     def update_state(self, state: TelemetryState) -> None:
         self.gps_lat.set_text(f"{state.lat:.6f}" if state.lat is not None else _NA)

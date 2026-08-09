@@ -32,7 +32,7 @@ from core.nfz import NoFlyZoneManager
 from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor
 from core.openaip_config import load_openaip_config, save_openaip_config
 from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_to_zones
-from core.model_profiles import ModelProfile
+from core.model_profiles import ModelProfile, load_profiles
 from core.resources import resource_path
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
@@ -142,6 +142,7 @@ class MainWindow(QMainWindow):
         home_lat, home_lon = home_position if home_position is not None else (None, None)
         self._map = MapWidget(home_lat=home_lat, home_lon=home_lon)
         self._dashboard = Dashboard()
+        self._dashboard.set_model_profile_names(list(load_profiles().keys()))
         self._horizon = HorizonWidget()
         self._horizon.set_scale(self._ui_state.get("horizon_scale", DEFAULT_HORIZON_SCALE))
         self._map.add_overlay(self._horizon, self._ui_state.get("horizon_corner", DEFAULT_HORIZON_CORNER))
@@ -267,6 +268,11 @@ class MainWindow(QMainWindow):
         if self._route_editor_dock_action.isChecked():
             self._set_route_editor_docked(True)
 
+        saved_model_name = self._ui_state.get("model_profile", "")
+        saved_profiles = load_profiles()
+        if saved_model_name and saved_model_name in saved_profiles:
+            self._apply_model_profile(saved_profiles[saved_model_name])
+
         # Persist every menu/view toggle immediately on change (matching
         # every other config file in this app); overlay sizes only change
         # via continuous mouse-drag ticks, so those are captured once in
@@ -285,6 +291,7 @@ class MainWindow(QMainWindow):
         self._horizon_scale_group.triggered.connect(self._persist_ui_state)
         self._lang_group.triggered.connect(self._persist_ui_state)
         self._track_overlay.auto_toggled.connect(self._persist_ui_state)
+        self._dashboard.model_profile_selected.connect(self._on_dashboard_model_selected)
 
         self._last_telemetry_time = 0.0
         self._has_fix = False
@@ -838,6 +845,15 @@ class MainWindow(QMainWindow):
         dialog = ModelProfileDialog(self._build_current_model_profile, self)
         dialog.profile_loaded.connect(self._apply_model_profile)
         dialog.exec()
+        # The dialog may have added/deleted profiles - refresh the
+        # telemetry-bar dropdown's contents to match either way.
+        self._dashboard.set_model_profile_names(list(load_profiles().keys()))
+
+    def _on_dashboard_model_selected(self, name: str) -> None:
+        profiles = load_profiles()
+        if name in profiles:
+            self._apply_model_profile(profiles[name])
+            self._persist_ui_state()
 
     def _apply_model_profile(self, profile: ModelProfile) -> None:
         self._battery_chemistry = profile.battery_chemistry
@@ -853,6 +869,8 @@ class MainWindow(QMainWindow):
 
         self._dashboard.apply_layout(profile.dashboard_group_order, profile.dashboard_rows)
         save_dashboard_layout(profile.dashboard_group_order, profile.dashboard_rows)
+
+        self._dashboard.set_current_model_profile_name(profile.name)
 
         self.statusBar().showMessage(i18n.tr("status_model_profile_loaded", name=profile.name), 5000)
 
@@ -1326,6 +1344,7 @@ class MainWindow(QMainWindow):
             "altitude_track_size": [self._altitude_track_overlay.width(), self._altitude_track_overlay.height()],
             "language": i18n.get_language(),
             "path_point_threshold_m": self._path_point_threshold_m,
+            "model_profile": self._dashboard.current_model_profile_name(),
         }
 
     def _persist_ui_state(self, *_args) -> None:
