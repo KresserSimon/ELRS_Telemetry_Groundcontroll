@@ -136,6 +136,12 @@ class MainWindow(QMainWindow):
         self._horizon = HorizonWidget()
         self._horizon.set_scale(self._ui_state.get("horizon_scale", DEFAULT_HORIZON_SCALE))
         self._map.add_overlay(self._horizon, self._ui_state.get("horizon_corner", DEFAULT_HORIZON_CORNER))
+        # A scale actually restored from a previous session is a deliberate
+        # value - never auto-fit-override it. A brand new install with no
+        # saved scale yet has nothing to respect, so it's free to auto-fit
+        # once docked (see the startup sync block below and
+        # _on_horizon_dock_toggled for the interactive-toggle case).
+        self._horizon_scale_manual = "horizon_scale" in self._ui_state
 
         self._route_manager = RouteManager()
         self._route_manager.changed.connect(self._on_route_changed)
@@ -241,6 +247,11 @@ class MainWindow(QMainWindow):
         self._altitude_track_overlay.setVisible(self._altitude_track_action.isChecked())
         if self._horizon_dock_action.isChecked():
             self._set_horizon_docked(True)
+            if not self._horizon_scale_manual:
+                # No scale was ever saved (fresh install) - give it a
+                # sensible initial fit instead of sitting at its bare
+                # 130px base size until the next window resize.
+                self._fit_docked_horizon()
         if self._altitude_track_dock_action.isChecked():
             self._set_altitude_track_docked(True)
         if self._route_editor_dock_action.isChecked():
@@ -441,7 +452,7 @@ class MainWindow(QMainWindow):
         self._altitude_track_dock_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._altitude_track_dock_action, "menu_altitude_track_dock"))
         self._altitude_track_dock_action.setCheckable(True)
-        self._altitude_track_dock_action.setChecked(self._ui_state.get("altitude_track_docked", False))
+        self._altitude_track_dock_action.setChecked(self._ui_state.get("altitude_track_docked", True))
         self._altitude_track_dock_action.toggled.connect(self._set_altitude_track_docked)
 
         self._track_overlay_action = view_map_menu.addAction("")
@@ -474,8 +485,8 @@ class MainWindow(QMainWindow):
         self._horizon_dock_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._horizon_dock_action, "menu_horizon_dock"))
         self._horizon_dock_action.setCheckable(True)
-        self._horizon_dock_action.setChecked(self._ui_state.get("horizon_docked", False))
-        self._horizon_dock_action.toggled.connect(self._set_horizon_docked)
+        self._horizon_dock_action.setChecked(self._ui_state.get("horizon_docked", True))
+        self._horizon_dock_action.toggled.connect(self._on_horizon_dock_toggled)
 
         horizon_pos_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((horizon_pos_menu, "menu_view_horizon_position"))
@@ -884,6 +895,10 @@ class MainWindow(QMainWindow):
     def _set_horizon_scale(self, action) -> None:
         self._horizon.set_scale(action.data())
         self._map.reposition_overlays()
+        # A size the user picked explicitly (menu preset, or in the future
+        # a slider) is a deliberate choice - stop auto-fitting on window
+        # resize from now on so it isn't immediately overridden again.
+        self._horizon_scale_manual = True
 
     def _open_dashboard_settings(self) -> None:
         dialog = DashboardSettingsDialog(
@@ -932,19 +947,31 @@ class MainWindow(QMainWindow):
             self._map.remove_overlay(self._horizon)
             self._horizon.set_docked(True)
             self._dashboard.set_top_docked(self._horizon, True)
-            self._fit_docked_horizon()
         else:
             self._dashboard.set_top_docked(self._horizon, False)
             self._horizon.set_docked(False)
             self._map.add_overlay(self._horizon, DEFAULT_HORIZON_CORNER)
+
+    def _on_horizon_dock_toggled(self, docked: bool) -> None:
+        """Menu-triggered (interactive) docking - unlike applying a
+        *restored* dock state at startup (which must respect whatever
+        scale was already restored from disk), a fresh interactive dock
+        always starts from a good auto-fit."""
+        if docked:
+            self._horizon_scale_manual = False
+        self._set_horizon_docked(docked)
+        if docked:
+            self._fit_docked_horizon()
 
     def _fit_docked_horizon(self) -> None:
         """Scale the artificial horizon to the dashboard's current width
         while it's docked there, instead of it staying at whatever small
         fixed size it happened to have when docked - called on every
         dashboard resize (see Dashboard.resized) as well as right after
-        docking."""
-        if not self._horizon.is_docked():
+        docking. Skipped once the user has explicitly picked a size via
+        the Groesse menu (see _set_horizon_scale), so that choice isn't
+        immediately fought and overridden on the next window resize."""
+        if not self._horizon.is_docked() or self._horizon_scale_manual:
             return
         available = self._dashboard.width()
         if self._altitude_track_dock_action.isChecked():

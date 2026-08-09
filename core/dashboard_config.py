@@ -13,7 +13,12 @@ LAYOUT_CONFIG_PATH = Path.home() / ".elrs_ground_station" / "dashboard_layout.js
 POSITION_CONFIG_PATH = Path.home() / ".elrs_ground_station" / "dashboard_position.json"
 
 VALID_POSITIONS = ("top", "bottom", "left", "right")
-DEFAULT_POSITION = "bottom"
+# A right-hand sidebar is the default so the artificial horizon/altitude
+# track (docked into the telemetry panel by default too, see
+# MainWindow._set_horizon_docked/_set_altitude_track_docked) sit in a
+# proper "Telemetrieleiste" alongside the field matrix, not a thin strip
+# under the map.
+DEFAULT_POSITION = "right"
 
 
 def load_visible_fields() -> Optional[Set[str]]:
