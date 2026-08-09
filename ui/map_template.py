@@ -8,15 +8,23 @@ never reloads and the marker moves smoothly.
 Route-drawing clicks, the "set home"/view-options context menu entries, and
 the coordinate readout travel the other way (JS -> Python) over a
 QWebChannel bridge registered as `routeBridge`.
+
+Leaflet itself is vendored inline (ui/leaflet_assets.py) rather than
+fetched from a CDN, so the map UI, route planning, and drone tracking all
+still work with no network connection - only the OSM/satellite tile
+images require one; without them the map just shows a blank/gray
+background behind everything else.
 """
+
+from ui.leaflet_assets import LEAFLET_CSS, LEAFLET_JS
 
 MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>__LEAFLET_CSS__</style>
+<script>__LEAFLET_JS__</script>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; padding: 0; background: #1b1f24; cursor: default; }
@@ -552,4 +560,6 @@ def get_map_html(
         .replace("__LABEL_VIEW_ROUTE_EDITOR__", label_view_route_editor)
         .replace("__LABEL_VIEW_COORDS__", label_view_coords)
         .replace("__LABEL_VIEW_HEATMAP__", label_view_heatmap)
+        .replace("__LEAFLET_CSS__", LEAFLET_CSS)
+        .replace("__LEAFLET_JS__", LEAFLET_JS)
     )
