@@ -26,6 +26,7 @@ from core.nfz import NoFlyZoneManager
 from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor
 from core.openaip_config import load_openaip_config, save_openaip_config
 from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_to_zones
+from core.model_profiles import ModelProfile
 from core.route import RouteManager
 from core.telemetry_state import TelemetryState
 from core.tracker_output import TrackerOutputSender
@@ -49,6 +50,7 @@ from ui.home_position_dialog import DEFAULT_LAT, DEFAULT_LON, HomePositionDialog
 from ui.horizon_widget import HorizonWidget
 from ui.map_buttons import HeadingModeButton, LockButton
 from ui.map_widget import MapWidget
+from ui.model_profile_dialog import ModelProfileDialog
 from ui.openaip_settings_dialog import OpenAipSettingsDialog
 from ui.route_editor_overlay import RouteEditorOverlay
 from ui.track_overlay import TrackOverlay
@@ -406,6 +408,10 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((tracker_output_action, "menu_tracker_output"))
         tracker_output_action.triggered.connect(self._open_tracker_output)
 
+        model_profiles_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((model_profiles_action, "menu_model_profiles"))
+        model_profiles_action.triggered.connect(self._open_model_profiles)
+
         # -------------------------------------------- Tools & Simulation
         sim_menu = menu.addMenu("")
         self._i18n_menus.append((sim_menu, "menu_simulation"))
@@ -635,6 +641,39 @@ class MainWindow(QMainWindow):
 
     def _on_tracker_output_error(self, message: str) -> None:
         self.statusBar().showMessage(message, 8000)
+
+    def _build_current_model_profile(self, name: str) -> ModelProfile:
+        return ModelProfile(
+            name=name,
+            battery_chemistry=self._battery_chemistry,
+            battery_cells=self._battery_cells,
+            battery_low_v=self._battery_low_v,
+            battery_critical_v=self._battery_critical_v,
+            dashboard_visible_fields=sorted(self._dashboard.visible_fields()),
+            dashboard_group_order=self._dashboard.group_order(),
+            dashboard_rows=self._dashboard.rows(),
+        )
+
+    def _open_model_profiles(self) -> None:
+        dialog = ModelProfileDialog(self._build_current_model_profile, self)
+        dialog.profile_loaded.connect(self._apply_model_profile)
+        dialog.exec()
+
+    def _apply_model_profile(self, profile: ModelProfile) -> None:
+        self._battery_chemistry = profile.battery_chemistry
+        self._battery_cells = profile.battery_cells
+        self._battery_low_v = profile.battery_low_v
+        self._battery_critical_v = profile.battery_critical_v
+        self._battery_monitor.configure(self._battery_cells, self._battery_low_v, self._battery_critical_v)
+
+        visible_fields = set(profile.dashboard_visible_fields)
+        self._dashboard.apply_field_visibility(visible_fields)
+        save_visible_fields(visible_fields)
+
+        self._dashboard.apply_layout(profile.dashboard_group_order, profile.dashboard_rows)
+        save_dashboard_layout(profile.dashboard_group_order, profile.dashboard_rows)
+
+        self.statusBar().showMessage(i18n.tr("status_model_profile_loaded", name=profile.name), 5000)
 
     def _open_home_settings(self) -> None:
         current = load_home_position()
