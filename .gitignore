@@ -9,3 +9,4 @@ venv/
 build/
 dist/
 *.spec
+dev_data/

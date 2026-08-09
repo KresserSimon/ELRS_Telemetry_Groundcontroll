@@ -79,6 +79,11 @@ DEFAULT_PATH_POINT_THRESHOLD_M = 1.5
 VEHICLE_TYPES = (("vehicle_quad", "quad"), ("vehicle_wing", "wing"), ("vehicle_plane", "plane"))
 LANGUAGES = (("language_de", "de"), ("language_en", "en"))
 BASE_LAYERS = (("maplayer_osm", "osm"), ("maplayer_satellite", "satellite"))
+# Experimental, parallel vector-tile renderer alongside the default
+# Leaflet/raster one - see the migration plan. Switching requires a
+# restart (rebuilding the whole map engine live is not worth the
+# complexity while this is still a Stage 1 feasibility spike).
+MAP_RENDERERS = (("map_renderer_leaflet", "leaflet"), ("map_renderer_maplibre", "maplibre"))
 HORIZON_CORNERS = (
     ("horizon_top_left", "top-left"),
     ("horizon_top_right", "top-right"),
@@ -150,7 +155,10 @@ class MainWindow(QMainWindow):
 
         home_position = load_home_position()
         home_lat, home_lon = home_position if home_position is not None else (None, None)
-        self._map = MapWidget(home_lat=home_lat, home_lon=home_lon)
+        self._map = MapWidget(
+            home_lat=home_lat, home_lon=home_lon,
+            renderer=self._ui_state.get("map_renderer", "leaflet"),
+        )
         self._dashboard = Dashboard()
         self._dashboard.set_model_profile_names(list(load_profiles().keys()))
         self._horizon = HorizonWidget()
@@ -454,6 +462,20 @@ class MainWindow(QMainWindow):
             action.setChecked(layer_id == self._ui_state.get("base_layer", "osm"))
             self._layer_group.addAction(action)
         self._layer_group.triggered.connect(lambda action: self._map.set_base_layer(action.data()))
+
+        renderer_menu = view_map_menu.addMenu("")
+        self._i18n_menus.append((renderer_menu, "menu_map_renderer"))
+        self._renderer_group = QActionGroup(self)
+        self._renderer_group.setExclusive(True)
+        current_renderer = self._ui_state.get("map_renderer", "leaflet")
+        for key, renderer_id in MAP_RENDERERS:
+            action = renderer_menu.addAction("")
+            self._i18n_actions.append((action, key))
+            action.setCheckable(True)
+            action.setData(renderer_id)
+            action.setChecked(renderer_id == current_renderer)
+            self._renderer_group.addAction(action)
+        self._renderer_group.triggered.connect(self._on_renderer_selected)
 
         view_map_menu.addSeparator()
 
@@ -861,6 +883,15 @@ class MainWindow(QMainWindow):
         self._path_point_threshold_m = value
         self._map.set_path_point_threshold(value)
         self._persist_ui_state()
+
+    def _on_renderer_selected(self, action) -> None:
+        # Deliberately no live hot-swap - see MAP_RENDERERS' comment.
+        # Persist immediately (matching every other menu preference) and
+        # just tell the user a restart is needed for it to take effect.
+        self._persist_ui_state()
+        QMessageBox.information(
+            self, i18n.tr("menu_map_renderer"), i18n.tr("map_renderer_restart_required")
+        )
 
     def _open_tracker_output(self) -> None:
         dialog = TrackerOutputDialog(self._tracker_output_sender, self)
@@ -1424,6 +1455,7 @@ class MainWindow(QMainWindow):
             "path_point_threshold_m": self._path_point_threshold_m,
             "model_profile": self._dashboard.current_model_profile_name(),
             "altitude_track_time_unit": self._altitude_track_overlay.time_unit(),
+            "map_renderer": self._renderer_group.checkedAction().data() if self._renderer_group.checkedAction() else "leaflet",
         }
 
     def _persist_ui_state(self, *_args) -> None:

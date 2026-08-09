@@ -1,7 +1,14 @@
-"""QWebEngineView wrapper exposing a tiny Python API over the Leaflet page."""
+"""QWebEngineView wrapper exposing a tiny Python API over the map page -
+either the default Leaflet/raster-tile page (ui/map_template.py) or the
+experimental, parallel MapLibre/vector-tile page (ui/maplibre_template.py),
+picked at construction time via the `renderer` parameter. See
+ui/maplibre_template.py's module docstring and the migration plan for why
+these coexist rather than one replacing the other.
+"""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Iterable, List, Optional
 
 from PyQt6.QtCore import QTimer
@@ -13,11 +20,20 @@ from core import i18n
 from core.nfz import NoFlyZone
 from core.route import Waypoint
 from ui.map_template import get_map_html
+from ui.maplibre_template import get_maplibre_html
+from ui.pmtiles_bridge import PMTilesBridge
 from ui.route_bridge import RouteBridge
 from ui.tile_cache_handler import SCHEME as TILE_CACHE_SCHEME
 from ui.tile_cache_handler import TileCacheSchemeHandler
 
 OVERLAY_MARGIN = 10
+
+# Stage-1-only default: a real region extract if one happens to be present
+# under dev_data/ (gitignored, not shipped) - there's no user-facing "pick
+# your region" flow yet (see the migration plan), so this just needs any
+# working local .pmtiles file to prove the MapLibre path renders at all.
+_DEV_DATA_DIR = Path(__file__).resolve().parent.parent / "dev_data" / "pmtiles"
+DEFAULT_MAPLIBRE_PMTILES_PATH = _DEV_DATA_DIR / "switzerland.pmtiles"
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 
 DISK_CACHE_MAX_BYTES = 500 * 1024 * 1024  # 500 MB, per the offline-tile-cache sizing goal
@@ -46,18 +62,27 @@ def _get_shared_profile() -> QWebEngineProfile:
 
 
 class MapWidget(QWebEngineView):
-    def __init__(self, parent=None, home_lat: Optional[float] = None, home_lon: Optional[float] = None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        home_lat: Optional[float] = None,
+        home_lon: Optional[float] = None,
+        renderer: str = "leaflet",
+    ) -> None:
         super().__init__(parent)
         self._auto_center = True
         self._overlays: list = []  # [[widget, corner], ...]
         self._pending_position: Optional[tuple] = None
+        self._renderer = renderer if renderer == "maplibre" else "leaflet"
 
         self._profile = _get_shared_profile()
         self.setPage(QWebEnginePage(self._profile, self))
 
         self.route_bridge = RouteBridge()
+        self.pmtiles_bridge = PMTilesBridge()
         self._channel = QWebChannel(self.page())
         self._channel.registerObject("routeBridge", self.route_bridge)
+        self._channel.registerObject("pmtilesBridge", self.pmtiles_bridge)
         self.page().setWebChannel(self._channel)
 
         self._tile_cache_handler = TileCacheSchemeHandler(self)
@@ -72,6 +97,12 @@ class MapWidget(QWebEngineView):
         self._position_timer.timeout.connect(self._flush_position)
         self._position_timer.start()
 
+        if self._renderer == "maplibre":
+            self._load_maplibre_page(home_lat, home_lon)
+        else:
+            self._load_leaflet_page(home_lat, home_lon)
+
+    def _load_leaflet_page(self, home_lat: Optional[float], home_lon: Optional[float]) -> None:
         html_kwargs = {
             "label_waypoint": i18n.tr("mapctx_waypoint"),
             "label_start": i18n.tr("mapctx_start"),
@@ -90,6 +121,21 @@ class MapWidget(QWebEngineView):
             html_kwargs["center_lat"] = home_lat
             html_kwargs["center_lon"] = home_lon
         self.setHtml(get_map_html(**html_kwargs))
+
+    def _load_maplibre_page(self, home_lat: Optional[float], home_lon: Optional[float]) -> None:
+        # Stage 1 spike: no user-facing region picker yet (see the
+        # migration plan) - just whatever local .pmtiles file happens to be
+        # available under dev_data/. A missing file degrades to a blank
+        # map (no crash) rather than falling back to the Leaflet path,
+        # since silently substituting a different renderer than the one
+        # explicitly selected would be more confusing than an empty map.
+        if DEFAULT_MAPLIBRE_PMTILES_PATH.is_file():
+            self.pmtiles_bridge.open(DEFAULT_MAPLIBRE_PMTILES_PATH)
+        html_kwargs = {}
+        if home_lat is not None and home_lon is not None:
+            html_kwargs["center_lat"] = home_lat
+            html_kwargs["center_lon"] = home_lon
+        self.setHtml(get_maplibre_html(**html_kwargs))
 
     def add_overlay(self, widget, corner: str = "top-right") -> None:
         widget.setParent(self)
