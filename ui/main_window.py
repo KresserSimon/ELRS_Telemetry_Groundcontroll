@@ -115,7 +115,6 @@ class MainWindow(QMainWindow):
         self._track_overlay.export_clicked.connect(self._export_track_prompt)
         self._map.add_overlay(self._track_overlay, "top-left")
 
-        self._heading_up = False
         self._lock_button = LockButton()
         self._lock_button.clicked.connect(self._toggle_map_lock)
         self._map.add_overlay(self._lock_button, "bottom-right")
@@ -160,7 +159,7 @@ class MainWindow(QMainWindow):
         # button's display explicitly so it doesn't start out looking
         # unlocked while auto-center is actually on.
         self._lock_button.set_locked(self._auto_center_action.isChecked())
-        self._heading_button.set_heading_up(self._heading_up)
+        self._heading_button.set_heading_up(self._heading_mode_action.isChecked())
 
         self._last_telemetry_time = 0.0
         self._has_fix = False
@@ -179,8 +178,18 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- menu
 
     def _build_menu(self) -> None:
+        # 8 top-level menus grouped by purpose (Datei | Route & Planung |
+        # Sperrzonen | Anzeige & Karte | Telemetrie & Hardware | Tools &
+        # Simulation | Einstellungen | Hilfe). A few QActions are
+        # intentionally constructed in one menu's section and then also
+        # added to another menu later in this method via menu.addAction() -
+        # that's the *same* QAction object appearing in two places, not a
+        # copy, so toggling it from either menu (or from the map's
+        # right-click view-options submenu, see _on_view_action) keeps every
+        # appearance in sync for free without any extra state-sync code.
         menu = self.menuBar()
 
+        # --------------------------------------------------------- Datei
         file_menu = menu.addMenu("")
         self._i18n_menus.append((file_menu, "menu_file"))
         export_gpx_action = file_menu.addAction("")
@@ -194,6 +203,7 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((exit_action, "menu_file_exit"))
         exit_action.triggered.connect(self.close)
 
+        # ----------------------------------------------- Route & Planung
         route_menu = menu.addMenu("")
         self._i18n_menus.append((route_menu, "menu_route"))
 
@@ -225,10 +235,25 @@ class MainWindow(QMainWindow):
         self._i18n_actions.append((export_route_action, "menu_route_export"))
         export_route_action.triggered.connect(self._export_route)
 
-        map_menu = menu.addMenu("")
-        self._i18n_menus.append((map_menu, "menu_map"))
+        # --------------------------------------------------------- Sperrzonen
+        nfz_menu = menu.addMenu("")
+        self._i18n_menus.append((nfz_menu, "menu_nfz"))
 
-        layer_menu = map_menu.addMenu("")
+        import_nfz_action = nfz_menu.addAction("")
+        self._i18n_actions.append((import_nfz_action, "menu_map_nfz_import"))
+        import_nfz_action.triggered.connect(self._import_nfz)
+
+        self._nfz_visible_action = nfz_menu.addAction("")
+        self._i18n_actions.append((self._nfz_visible_action, "menu_map_nfz_visible"))
+        self._nfz_visible_action.setCheckable(True)
+        self._nfz_visible_action.setChecked(True)
+        self._nfz_visible_action.toggled.connect(self._map.set_nfz_visible)
+
+        # ----------------------------------------------- Anzeige & Karte
+        view_map_menu = menu.addMenu("")
+        self._i18n_menus.append((view_map_menu, "menu_map"))
+
+        layer_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((layer_menu, "menu_map_layer"))
         self._layer_group = QActionGroup(self)
         self._layer_group.setExclusive(True)
@@ -241,79 +266,36 @@ class MainWindow(QMainWindow):
             self._layer_group.addAction(action)
         self._layer_group.triggered.connect(lambda action: self._map.set_base_layer(action.data()))
 
-        map_menu.addSeparator()
-        import_nfz_action = map_menu.addAction("")
-        self._i18n_actions.append((import_nfz_action, "menu_map_nfz_import"))
-        import_nfz_action.triggered.connect(self._import_nfz)
+        view_map_menu.addSeparator()
 
-        self._nfz_visible_action = map_menu.addAction("")
-        self._i18n_actions.append((self._nfz_visible_action, "menu_map_nfz_visible"))
-        self._nfz_visible_action.setCheckable(True)
-        self._nfz_visible_action.setChecked(True)
-        self._nfz_visible_action.toggled.connect(self._map.set_nfz_visible)
-
-        flightlog_menu = menu.addMenu("")
-        self._i18n_menus.append((flightlog_menu, "menu_flightlog"))
-
-        flightlog_settings_action = flightlog_menu.addAction("")
-        self._i18n_actions.append((flightlog_settings_action, "menu_flightlog_settings"))
-        flightlog_settings_action.triggered.connect(self._open_flight_log_settings)
-
-        self._flightlog_active_action = flightlog_menu.addAction("")
-        self._i18n_actions.append((self._flightlog_active_action, "menu_flightlog_active"))
-        self._flightlog_active_action.setCheckable(True)
-        self._flightlog_active_action.toggled.connect(self._toggle_flight_logging)
-
-        settings_menu = menu.addMenu("")
-        self._i18n_menus.append((settings_menu, "menu_settings"))
-
-        conn_settings_action = settings_menu.addAction("")
-        self._i18n_actions.append((conn_settings_action, "menu_connection_settings"))
-        conn_settings_action.triggered.connect(self._open_connection_dialog)
-
-        battery_settings_action = settings_menu.addAction("")
-        self._i18n_actions.append((battery_settings_action, "menu_battery_settings"))
-        battery_settings_action.triggered.connect(self._open_battery_settings)
-
-        home_settings_action = settings_menu.addAction("")
-        self._i18n_actions.append((home_settings_action, "menu_home_settings"))
-        home_settings_action.triggered.connect(self._open_home_settings)
-
-        self._dashboard_settings_action = settings_menu.addAction("")
-        self._i18n_actions.append((self._dashboard_settings_action, "menu_dashboard_settings"))
-        self._dashboard_settings_action.triggered.connect(self._open_dashboard_settings)
-        settings_menu.addSeparator()
-
-        view_menu = settings_menu.addMenu("")
-        self._i18n_menus.append((view_menu, "menu_view"))
-        self._auto_center_action = view_menu.addAction("")
+        self._auto_center_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._auto_center_action, "menu_view_auto_center"))
         self._auto_center_action.setCheckable(True)
         self._auto_center_action.setChecked(True)
         self._auto_center_action.toggled.connect(self._map.set_auto_center)
         self._auto_center_action.toggled.connect(self._lock_button.set_locked)
 
-        jump_action = view_menu.addAction("")
+        self._heading_mode_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._heading_mode_action, "menu_view_heading_mode"))
+        self._heading_mode_action.setCheckable(True)
+        self._heading_mode_action.setChecked(False)
+        self._heading_mode_action.toggled.connect(self._apply_heading_mode)
+
+        jump_action = view_map_menu.addAction("")
         self._i18n_actions.append((jump_action, "menu_view_jump"))
         jump_action.setShortcut("Ctrl+Home")
         jump_action.triggered.connect(self._map.center_on_current)
 
-        # Same QAction instance as under Einstellungen - one place to open
-        # the dialog, reachable from both menus.
-        view_menu.addAction(self._dashboard_settings_action)
+        # Same QAction instance as in the Route menu.
+        view_map_menu.addAction(self._route_editor_action)
 
-        # Same QAction instance as in the Route menu - toggling it from
-        # either place (or from the map's right-click view-options submenu)
-        # keeps both checkmarks and the overlay's visibility in sync for free.
-        view_menu.addAction(self._route_editor_action)
-
-        self._coord_overlay_action = view_menu.addAction("")
+        self._coord_overlay_action = view_map_menu.addAction("")
         self._i18n_actions.append((self._coord_overlay_action, "menu_view_coords"))
         self._coord_overlay_action.setCheckable(True)
         self._coord_overlay_action.setChecked(False)
         self._coord_overlay_action.toggled.connect(self._map.set_coord_overlay_visible)
 
-        vehicle_menu = view_menu.addMenu("")
+        vehicle_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((vehicle_menu, "menu_view_vehicle"))
         self._vehicle_group = QActionGroup(self)
         self._vehicle_group.setExclusive(True)
@@ -326,13 +308,13 @@ class MainWindow(QMainWindow):
             self._vehicle_group.addAction(action)
         self._vehicle_group.triggered.connect(lambda action: self._map.set_vehicle_type(action.data()))
 
-        horizon_toggle_action = view_menu.addAction("")
+        horizon_toggle_action = view_map_menu.addAction("")
         self._i18n_actions.append((horizon_toggle_action, "menu_view_horizon_toggle"))
         horizon_toggle_action.setCheckable(True)
         horizon_toggle_action.setChecked(True)
         horizon_toggle_action.toggled.connect(self._horizon.setVisible)
 
-        horizon_pos_menu = view_menu.addMenu("")
+        horizon_pos_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((horizon_pos_menu, "menu_view_horizon_position"))
         self._horizon_pos_group = QActionGroup(self)
         self._horizon_pos_group.setExclusive(True)
@@ -347,7 +329,7 @@ class MainWindow(QMainWindow):
             lambda action: self._map.set_overlay_corner(self._horizon, action.data())
         )
 
-        horizon_scale_menu = view_menu.addMenu("")
+        horizon_scale_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((horizon_scale_menu, "menu_view_horizon_scale"))
         self._horizon_scale_group = QActionGroup(self)
         self._horizon_scale_group.setExclusive(True)
@@ -359,6 +341,58 @@ class MainWindow(QMainWindow):
             action.setChecked(scale == DEFAULT_HORIZON_SCALE)
             self._horizon_scale_group.addAction(action)
         self._horizon_scale_group.triggered.connect(self._set_horizon_scale)
+
+        # ----------------------------------------- Telemetrie & Hardware
+        telemetry_menu = menu.addMenu("")
+        self._i18n_menus.append((telemetry_menu, "menu_telemetry_hardware"))
+
+        conn_settings_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((conn_settings_action, "menu_connection_settings"))
+        conn_settings_action.triggered.connect(self._open_connection_dialog)
+
+        telemetry_menu.addSeparator()
+        flightlog_settings_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((flightlog_settings_action, "menu_flightlog_settings"))
+        flightlog_settings_action.triggered.connect(self._open_flight_log_settings)
+
+        self._flightlog_active_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((self._flightlog_active_action, "menu_flightlog_active"))
+        self._flightlog_active_action.setCheckable(True)
+        self._flightlog_active_action.toggled.connect(self._toggle_flight_logging)
+
+        telemetry_menu.addSeparator()
+        battery_settings_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((battery_settings_action, "menu_battery_settings"))
+        battery_settings_action.triggered.connect(self._open_battery_settings)
+
+        # -------------------------------------------- Tools & Simulation
+        sim_menu = menu.addMenu("")
+        self._i18n_menus.append((sim_menu, "menu_simulation"))
+        self._demo_action = sim_menu.addAction("")
+        self._i18n_actions.append((self._demo_action, "menu_simulation_demo"))
+        self._demo_action.setCheckable(True)
+        self._demo_action.setChecked(self._demo_mode)
+        self._demo_action.toggled.connect(self._toggle_demo_mode)
+
+        self._plan_action = sim_menu.addAction("")
+        self._i18n_actions.append((self._plan_action, "menu_simulation_plan"))
+        self._plan_action.setCheckable(True)
+        self._plan_action.setChecked(self._plan_mode)
+        self._plan_action.toggled.connect(self._toggle_plan_mode)
+
+        # ------------------------------------------------- Einstellungen
+        settings_menu = menu.addMenu("")
+        self._i18n_menus.append((settings_menu, "menu_settings"))
+
+        home_settings_action = settings_menu.addAction("")
+        self._i18n_actions.append((home_settings_action, "menu_home_settings"))
+        home_settings_action.triggered.connect(self._open_home_settings)
+
+        self._dashboard_settings_action = settings_menu.addAction("")
+        self._i18n_actions.append((self._dashboard_settings_action, "menu_dashboard_settings"))
+        self._dashboard_settings_action.triggered.connect(self._open_dashboard_settings)
+        # Same QAction instance, mirrored into Anzeige & Karte too.
+        view_map_menu.addAction(self._dashboard_settings_action)
 
         settings_menu.addSeparator()
         lang_menu = settings_menu.addMenu("")
@@ -374,25 +408,12 @@ class MainWindow(QMainWindow):
             self._lang_group.addAction(action)
         self._lang_group.triggered.connect(lambda action: i18n.set_language(action.data()))
 
+        # --------------------------------------------------------- Hilfe
         help_menu = menu.addMenu("")
         self._i18n_menus.append((help_menu, "menu_help"))
         manual_action = help_menu.addAction("")
         self._i18n_actions.append((manual_action, "menu_help_manual"))
         manual_action.triggered.connect(self._open_manual)
-
-        sim_menu = menu.addMenu("")
-        self._i18n_menus.append((sim_menu, "menu_simulation"))
-        self._demo_action = sim_menu.addAction("")
-        self._i18n_actions.append((self._demo_action, "menu_simulation_demo"))
-        self._demo_action.setCheckable(True)
-        self._demo_action.setChecked(self._demo_mode)
-        self._demo_action.toggled.connect(self._toggle_demo_mode)
-
-        self._plan_action = sim_menu.addAction("")
-        self._i18n_actions.append((self._plan_action, "menu_simulation_plan"))
-        self._plan_action.setCheckable(True)
-        self._plan_action.setChecked(self._plan_mode)
-        self._plan_action.toggled.connect(self._toggle_plan_mode)
 
         self._retranslate_menu()
 
@@ -493,9 +514,11 @@ class MainWindow(QMainWindow):
         self._auto_center_action.setChecked(not self._auto_center_action.isChecked())
 
     def _toggle_heading_mode(self) -> None:
-        self._heading_up = not self._heading_up
-        self._map.set_heading_mode(self._heading_up)
-        self._heading_button.set_heading_up(self._heading_up)
+        self._heading_mode_action.setChecked(not self._heading_mode_action.isChecked())
+
+    def _apply_heading_mode(self, enabled: bool) -> None:
+        self._map.set_heading_mode(enabled)
+        self._heading_button.set_heading_up(enabled)
 
     def _apply_connection_values(self, values: dict) -> None:
         self._args.protocol = values["protocol"]
