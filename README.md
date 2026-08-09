@@ -26,26 +26,54 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
   blenden, Gruppen sind per Drag & Drop umsortierbar und auf 1–3 Zeilen
   verteilbar, und das ganze Dashboard lässt sich oben, unten, links oder
   rechts im Fenster andocken (als Fenster-Trennbalken frei in der Größe
-  verstellbar) – alles wird als persönlicher Standard gespeichert.
-- **Frei verschieb- und größenveränderbare Karten-Overlays** (künstlicher
-  Horizont, Wegpunkt-Editor, Tracking-Aufzeichnung, Höhenverlauf) – wie
-  kleine Fenster direkt mit der Maus ziehen, über eine Ecken-Anfassmarke
-  skalieren und über ein Schließen-Symbol in der Ecke ausblenden. Horizont,
-  Höhenverlauf und Wegpunkt-Editor lassen sich alternativ auch direkt im
-  Telemetrie-Bereich andocken statt frei auf der Karte zu schweben.
+  verstellbar) – alles wird als persönlicher Standard gespeichert. Alle
+  Felder teilen sich dabei eine einheitliche Mindestbreite (an das jeweils
+  breiteste sichtbare Feld angepasst) für ein symmetrisches, aufgeräumtes
+  Raster statt ungleichmäßiger Spalten.
+- **Künstlicher Horizont und Live-Höhenverlauf standardmäßig direkt im
+  Telemetrie-Panel eingebettet** (Größe per Voreinstellungen im Menü
+  verstellbar), lassen sich aber jederzeit als frei verschieb- und
+  größenveränderbare Karten-Overlays lösen – wie kleine Fenster direkt mit
+  der Maus ziehen, über eine Ecken-Anfassmarke skalieren und über ein
+  Schließen-Symbol in der Ecke ausblenden. Der Wegpunkt-Editor lässt sich
+  ebenfalls wahlweise andocken oder frei schweben lassen; die Tracking-
+  Aufzeichnung bleibt ein freies Overlay.
 - **Live-Höhenverlauf**: zeichnet die tatsächlich geflogene Höhe über die
-  Zeit als Diagramm auf, sobald Telemetrie eintrifft – unabhängig vom
-  statischen Höhenprofil der geplanten Route (siehe unten).
-- **Wegpunkt-Editor als Live-Overlay** auf der Karte: Liste aller
-  Wegpunkte mit Höhe, Name und INAV-Missionsparametern (Aktion,
-  Geschwindigkeit, P1–P3), Änderungen wirken sofort. Export/Import als
-  INAV-`.mission`-JSON sowie eine Geländeprüfung (färbt Wegpunkte rot/gelb/
-  grün je nach Bodenfreiheit) sind direkt im Overlay verfügbar.
+  Zeit als beschriftetes Diagramm auf ("Höhe [m]" / "Zeit"), sobald
+  Telemetrie eintrifft – die Y-Achse startet dabei immer fest bei 0 m, die
+  Zeiteinheit der X-Achse ist zwischen Sekunden/Minuten/Stunden wählbar –
+  unabhängig vom statischen Höhenprofil der geplanten Route (siehe unten).
+- **Interaktiver Wegpunkt-Editor als Live-Overlay** auf der Karte: Liste
+  aller Wegpunkte mit Höhe, Name und INAV-Missionsparametern (Aktion,
+  Geschwindigkeit, P1–P3), Änderungen wirken sofort. Wegpunkt-Marker auf
+  der Karte lassen sich direkt mit der Maus verschieben (live synchron mit
+  Tabelle und Route), ein Klick markiert/hebt die zugehörige Tabellenzeile
+  hervor, ein Rechtsklick öffnet ein Menü zum Bearbeiten oder Löschen.
+  Zeilen in der Tabelle lassen sich per Drag & Drop umsortieren, "Auswahl
+  löschen"/"Alle löschen" entfernen gezielt Wegpunkte, "Einfügen" setzt
+  einen neuen Punkt genau zwischen zwei bestehende, "Route umkehren" dreht
+  die Flugrichtung um, und Höhe/Geschwindigkeit lassen sich per Massen-
+  Bearbeitung auf die Auswahl oder alle Wegpunkte anwenden. Export/Import
+  als INAV-`.mission`-JSON sowie eine Geländeprüfung (färbt Wegpunkte rot/
+  gelb/grün je nach Bodenfreiheit) sind direkt im Overlay verfügbar.
 - **Rechtsklick auf die Karte** öffnet ein Menü zum Setzen von Wegpunkt/
   Startpunkt/Endpunkt, zum direkten Teachen der Home-Position an der
   angeklickten Stelle sowie ein "Ansicht"-Untermenü mit den wichtigsten
   Kartenoptionen (Auto-Center, Kartenausrichtung, Wegpunkt-Editor,
   Koordinatenanzeige).
+- **Modellauswahl direkt in der Telemetrieleiste**: ein Dropdown über den
+  Dashboard-Feldern listet alle gespeicherten Modell-Profile; die Auswahl
+  wendet sofort die passenden Akku-Warn-/Kritisch-Spannungsschwellen an
+  (Anzeige und Sprachwarnung) – ein Eintrag "+ Neues Modell anlegen" öffnet
+  direkt den Dialog zum Anlegen eines neuen Profils. Profile speichern
+  neben Dashboard-Layout auch die genauen Akku-Spezifikationen (Chemie,
+  Zellenzahl, Nennkapazität in mAh).
+- **Optimierte Kartenperformance**: GPU-beschleunigtes Rendering, ein
+  500-MB-Festplatten-Cache für die Karte sowie eine auf 5 Hz gedrosselte
+  Positionsaktualisierung halten die Karte auch bei hoher Telemetrierate
+  flüssig; neue Flugbahnpunkte werden erst ab einer einstellbaren
+  Mindestbewegung (Standard 1,5 m) aufgezeichnet, um GPS-Jitter nicht
+  aufzuzeichnen.
 - **No-Fly-Zones**: Sperrzonen aus GeoJSON oder CSV laden und als rote
   Kreise/Polygone auf der Karte anzeigen (ein-/ausblendbar).
 - **Konfigurierbare Home-Position**: legt fest, wo die Karte beim Start
@@ -70,9 +98,11 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
   von der geflogenen Spur unabhängige Referenzlinie; Export als GPX, CSV
   oder INAV-`.mission`-JSON.
 - **Getrennt steuerbare Flugpfad-Aufzeichnung** (Start/Pause/Export-Overlay
-  auf der Karte, mit Formatabfrage GPX/KML/CSV) und **Fluglog** (kontinuier-
-  liche CSV-Aufzeichnung aller Telemetriedaten mit frei wählbaren Spalten
-  und Intervall) – zwei unabhängige Aufzeichnungen für unterschiedliche
+  auf der Karte, mit Formatabfrage GPX/KML/CSV, standardmäßig aktivierter
+  **Auto-Option**, die die Aufzeichnung automatisch startet, sobald sich
+  das Modell tatsächlich bewegt) und **Fluglog** (kontinuierliche
+  CSV-Aufzeichnung aller Telemetriedaten mit frei wählbaren Spalten und
+  Intervall) – zwei unabhängige Aufzeichnungen für unterschiedliche
   Zwecke.
 - **WiFi (UDP) oder direktes USB-Kabel** als Verbindungsweg zur Telemetrie,
   zur Laufzeit umschaltbar – ebenso wie das Protokoll (MAVLink oder CRSF/
@@ -190,23 +220,27 @@ von Verbindung (WiFi/UDP oder USB) und Protokoll (MAVLink oder CRSF) —
 Abbrechen übernimmt einfach die per Kommandozeile übergebenen/Standard-
 Einstellungen, ein zusätzlicher Button startet direkt den Demo-Modus.
 
-Im laufenden Programm ist die Menüleiste in acht Gruppen sortiert – Datei
-| Route & Planung | Sperrzonen | Anzeige & Karte | Telemetrie & Hardware |
-Tools & Simulation | Einstellungen | Hilfe:
+Im laufenden Programm ist die Menüleiste in sieben Gruppen sortiert – Datei
+| Route & Planung | Anzeige & Karte | Telemetrie & Hardware | Tools &
+Simulation | Einstellungen | Hilfe:
 
 - **Datei → Flugpfad als GPX/KML exportieren** speichert alle bisher
   aufgezeichneten GPS-Punkte des aktuellen Fluges (alternativ das
   Tracking-Overlay auf der Karte, siehe unten, mit zusätzlicher
   CSV-Option).
 - **Route & Planung → Wegpunkt-Modus** schaltet den Klick-zum-Hinzufügen-
-  Modus auf der Karte ein; ein Klick auf einen bestehenden Wegpunkt
-  entfernt ihn wieder. **Letzten Wegpunkt entfernen / Route löschen** für
-  die restliche Bearbeitung, **Wegpunkt-Editor anzeigen** blendet das
-  Editor-Overlay ein/aus (siehe unten), **Wegpunkt-Editor im Dashboard
-  andocken** bettet ihn stattdessen unterhalb der Telemetriefelder ein.
-  Ein **Rechtsklick** auf die Karte
-  öffnet jederzeit (unabhängig vom Wegpunkt-Modus) ein Menü mit Wegpunkt/
-  Startpunkt/Endpunkt, "Als Home setzen" sowie einem "Ansicht"-Untermenü.
+  Modus auf der Karte ein. Ein Klick auf einen bestehenden Wegpunkt-Marker
+  wählt ihn aus und hebt die zugehörige Zeile im Wegpunkt-Editor hervor;
+  ein Rechtsklick auf den Marker öffnet ein Menü zum Bearbeiten oder
+  Löschen. **Letzten Wegpunkt entfernen / Route löschen** für die
+  restliche Bearbeitung, **Wegpunkt-Editor anzeigen** blendet das
+  interaktive Editor-Overlay ein/aus (Drag & Drop zum Umsortieren,
+  Massen-Bearbeitung, Einfügen zwischen zwei Punkten, Route umkehren –
+  siehe oben), **Wegpunkt-Editor im Dashboard andocken** bettet ihn
+  stattdessen unterhalb der Telemetriefelder ein. Ein **Rechtsklick** auf
+  die Karte selbst öffnet jederzeit (unabhängig vom Wegpunkt-Modus) ein
+  Menü mit Wegpunkt/Startpunkt/Endpunkt, "Als Home setzen" sowie einem
+  "Ansicht"-Untermenü.
 - **Route & Planung → Route importieren/exportieren...** lädt bzw.
   speichert eine Wegpunktliste als GPX, CSV, iNav `.mission` (klassisches
   MW-XML- oder modernes JSON-Format, wird beim Import automatisch
@@ -216,33 +250,36 @@ Tools & Simulation | Einstellungen | Hilfe:
   per "aktuelle Position verwenden") entsteht mit wählbarem Bahnabstand,
   Ausrichtung und Höhe eine Zickzack-Route, die die aktuelle Route
   ersetzt.
-- **Sperrzonen → Sperrzonen laden...** importiert No-Fly-Zones aus
+- **Anzeige & Karte → Kartentyp** wechselt zwischen OpenStreetMap und
+  Esri-Satellitenbild. **Sperrzonen** (Untermenü) fasst alles rund um
+  No-Fly-Zones zusammen: **Sperrzonen laden...** importiert sie aus
   GeoJSON/CSV, **Sperrzonen anzeigen** blendet sie ein/aus, **Distanz-
   Warnung aktivieren (50 m)** löst eine Sprachwarnung und eine Meldung in
   der Statusleiste aus, sobald sich das Modell einer Zone auf 50 m
-  nähert. **OpenAIP-Einstellungen...** hinterlegt einen optionalen
+  nähert, **OpenAIP-Einstellungen...** hinterlegt einen optionalen
   API-Key und die gewünschten Luftraumtypen (CTR, Restricted, Prohibited
   etc.), **OpenAIP Zonen laden** lädt damit passende Luftraumdaten für
   die aktuelle Home-Position herunter und zeigt sie als Sperrzonen an.
-- **Anzeige & Karte → Kartentyp** wechselt zwischen OpenStreetMap und
-  Esri-Satellitenbild. **Auto-Center** schaltet das automatische
+  **Auto-Center** schaltet das automatische
   Nachführen der Karte auf die aktuelle Position ein/aus (auch über den
   Lock-Button direkt auf der Karte erreichbar, Google-Maps-artig).
   **Drohnenrichtung/Norden oben** dreht die ganze Karte mit dem aktuellen
   Kurs mit (auch über den zweiten fixen Kartenbutton erreichbar).
   **Aktuelle Position anspringen** (`Strg+Pos1`) zentriert die Karte
   sofort, unabhängig von Auto-Center. **Wegpunkt-Editor anzeigen**,
-  **Tracking-Overlay anzeigen**, **Höhenverlauf anzeigen**, **Koordinaten
-  unter Mauszeiger anzeigen** und **RSSI/LQ Heatmap aktivieren** (färbt
-  den geflogenen Pfad live nach Verbindungsqualität) blenden die
-  jeweiligen Overlays/Modi ein/aus. **Fahrzeugtyp** wählt das Kartensymbol
-  (Quadrocopter/Wing/Flugzeug), **Künstlicher Horizont anzeigen** blendet
-  das Horizont-Overlay ein/aus (frei verschieb-/skalierbar, **Position**/
-  **Größe** bieten zusätzlich feste Presets). **Horizont im Dashboard
-  andocken** und **Höhenverlauf im Dashboard andocken** betten die
-  jeweiligen Overlays direkt in die Telemetrie-Leiste ein statt sie frei
-  auf der Karte schweben zu lassen (nebeneinander in einer Zeile über den
-  Telemetriefeldern, siehe Abschnitt zum Dashboard). **Dashboard
+  **Karten-Performance...** (Mindestabstand für neue Flugbahnpunkte
+  einstellen), **Tracking-Overlay anzeigen**, **Höhenverlauf anzeigen**,
+  **Zeiteinheit (Höhenprofil)** (Sekunden/Minuten/Stunden für die
+  Höhenverlauf-X-Achse), **Koordinaten unter Mauszeiger anzeigen** und
+  **RSSI/LQ Heatmap aktivieren** (färbt den geflogenen Pfad live nach
+  Verbindungsqualität) runden das Menü ab. **Fahrzeugtyp** wählt das
+  Kartensymbol (Quadrocopter/Wing/Flugzeug), **Künstlicher Horizont
+  anzeigen** blendet das Horizont-Overlay ein/aus (**Position**/**Größe**
+  bieten feste Presets). **Horizont im Dashboard andocken** und
+  **Höhenverlauf im Dashboard andocken** (beide standardmäßig aktiv)
+  betten die jeweiligen Overlays direkt in die Telemetrie-Leiste ein statt
+  sie frei auf der Karte schweben zu lassen (nebeneinander in einer Zeile
+  über den Telemetriefeldern, siehe Abschnitt zum Dashboard). **Dashboard
   anpassen...** ist hier zur schnellen Erreichbarkeit gespiegelt (siehe
   Einstellungen).
 - **Telemetrie & Hardware → Verbindung...** wechselt zur Laufzeit
@@ -253,13 +290,14 @@ Tools & Simulation | Einstellungen | Hilfe:
   und in welchem Intervall (0,1–60 s), **Logging aktiv** fragt einen
   Zielpfad ab und schreibt ab dann laufend eine CSV-Zeile pro Intervall.
   **Akkuwarnung...** wählt LiPo oder Li-Ion (füllt passende Standard-
-  Schwellwerte vor) sowie Zellenzahl und die genauen Warn-/Kritisch-
-  Spannungen. **Antennen-Tracker / Telemetrie-Ausgabe...** sendet die
-  Live-Position als MAVLink oder NMEA über seriell oder UDP an einen
-  externen Tracker (Start/Stopp direkt im Dialog). **Modell-Profile
-  verwalten...** speichert die aktuellen Akku- und Dashboard-
-  Einstellungen unter einem Namen und lädt sie später mit einem Klick
-  wieder.
+  Schwellwerte vor) sowie Zellenzahl, die genauen Warn-/Kritisch-
+  Spannungen und die Nennkapazität (mAh) des Akkus. **Antennen-Tracker /
+  Telemetrie-Ausgabe...** sendet die Live-Position als MAVLink oder NMEA
+  über seriell oder UDP an einen externen Tracker (Start/Stopp direkt im
+  Dialog). **Modell-Profile verwalten...** speichert die aktuellen Akku-
+  und Dashboard-Einstellungen unter einem Namen und lädt sie später mit
+  einem Klick wieder – schneller geht es über das Modellauswahl-Dropdown
+  direkt in der Telemetrieleiste (siehe oben).
 - **Tools & Simulation → Demo-Modus / Plan-Modus** schaltet zur Laufzeit
   zwischen echter Telemetrie, simulierten Daten und dem telemetriefreien
   Plan-Modus um; beide sind auch direkt im Verbindungs-Popup beim Start
@@ -376,9 +414,12 @@ elrs_ground_station/
   core/
     telemetry_state.py     gemeinsames Datenmodell
     route.py                Wegpunkt/Routen-Datenmodell (RouteManager), inkl. INAV-
-                             Missionsfeldern (Aktion/Speed/P1-P3) und typisierten
+                             Missionsfeldern (Aktion/Speed/P1-P3), typisierten
                              Wegpunkten (Wegpunkt/Startpunkt/Endpunkt) aus dem
-                             Rechtsklick-Menü
+                             Rechtsklick-Menü sowie strukturellen Bearbeitungen
+                             (Löschen mehrerer, Verschieben, Umsortieren, Einfügen
+                             zwischen zwei Punkten, Route umkehren, Massen-Bearbeitung
+                             von Höhe/Geschwindigkeit) fürs interaktive Editing
     geo.py                   Haversine-Distanz + Peilung + lokale Meter-Projektion
                               (equirectangular), gemeinsam genutzt von grid_pattern.py
                               und nfz_proximity.py
@@ -409,7 +450,7 @@ elrs_ground_station/
     serial_ports.py            Hilfsfunktion fuer --list-ports
     demo_worker.py              Simulierte Telemetrie
   ui/
-    main_window.py           Hauptfenster, verbindet Worker <-> UI, 8-Gruppen-Menü,
+    main_window.py           Hauptfenster, verbindet Worker <-> UI, 7-Gruppen-Menü,
                               Startpopup, Plan-Modus, Rechtsklick-/Ansicht-Dispatch
     connection_dialog.py     Dialog zum Wechsel WiFi/USB + Protokoll (auch als
                               Startpopup, inkl. Demo-/Plan-Modus-Buttons)
@@ -434,16 +475,21 @@ elrs_ground_station/
                               damit die Karte auch ohne Internet lädt (siehe "Offline-Nutzung")
     map_buttons.py            Fixe Google-Maps-artige Kartenbuttons (Auto-Center-Sperre,
                               Kartenausrichtung)
-    route_bridge.py          QWebChannel-Bruecke fuer Wegpunkt-/Kontextmenü-/
-                              Koordinaten-Events (JS -> Python)
+    route_bridge.py          QWebChannel-Bruecke fuer Wegpunkt-Auswahl/-Verschieben/
+                              -Kontextmenü/Kartenkontextmenü/Koordinaten-Events
+                              (JS -> Python)
     draggable_overlay.py      Basisklasse fuer verschieb-/groessenveraenderbare
                               Karten-Overlays (Ecken-Anfassmarke)
     horizon_widget.py        Kuenstlicher Horizont (QPainter, verschieb-/skalierbares Overlay)
-    route_editor_overlay.py   Wegpunkt-Editor als Live-Overlay (Tabelle, INAV-Mission-
+    route_editor_overlay.py   Interaktiver Wegpunkt-Editor als Live-Overlay (Tabelle mit
+                              Klick-Selektion, Drag&Drop-Zeilenumsortierung, Massen-
+                              Bearbeitung, Einfügen/Route-umkehren, INAV-Mission-
                               Export/Import, Geländeprüfung)
     track_overlay.py          Start/Pause/Export-Overlay fuer die Flugpfad-Aufzeichnung
     dashboard.py             Frei konfigurierbare Telemetrie-Leiste mit Status-Icons,
-                              Mehrzeilen-Layout, andockbar an jeder Fensterseite
+                              Mehrzeilen-Layout, einheitlicher Feldbreite, andockbar an
+                              jeder Fensterseite, plus Modellauswahl-Dropdown oben
+                              (inkl. "+ Neues Modell anlegen")
     icons.py                  QPainter-gezeichnete Dashboard-Icons (keine Bilddateien)
   export/
     track_export.py         GPX/KML/CSV-Export des geflogenen Pfads
@@ -489,25 +535,50 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   shown or hidden, groups can be drag-and-dropped into a new order and
   spread across 1-3 rows, and the whole dashboard can be docked to the
   top, bottom, left, or right of the window (freely resizable as a
-  window split) - all saved as your personal default.
-- **Freely draggable and resizable map overlays** (artificial horizon,
-  waypoint editor, track recorder, altitude track) - drag them around
-  like little windows, resize from a corner grip, and close them with a
-  small (x) button in the corner. The horizon, altitude track, and
-  waypoint editor can also be docked directly into the telemetry area
-  instead of floating on the map.
-- **Live altitude track**: plots actual flown altitude over time as
-  telemetry arrives - independent of the static elevation profile of the
-  planned route (see below).
-- **Waypoint editor as a live map overlay**: a table of every waypoint with
-  altitude, name, and INAV mission parameters (action, speed, P1-P3) -
-  edits apply immediately. Export/import as INAV `.mission` JSON and a
-  terrain check (colors waypoints red/yellow/green by ground clearance) are
-  built right into the overlay.
+  window split) - all saved as your personal default. Every field shares a
+  single uniform minimum width (sized to whichever visible field is
+  widest) for a tidy, symmetric grid instead of ragged columns.
+- **Artificial horizon and live altitude track embedded directly in the
+  telemetry panel by default** (size adjustable via menu presets), but can
+  be popped out into freely draggable and resizable map overlays at any
+  time - drag them around like little windows, resize from a corner grip,
+  and close them with a small (x) button in the corner. The waypoint
+  editor can likewise be docked or left floating; the track recorder stays
+  a floating overlay.
+- **Live altitude track**: plots actual flown altitude over time as a
+  labeled chart ("Altitude [m]" / "Time") as telemetry arrives - the Y
+  axis always starts at a fixed 0m, the X-axis time unit is selectable
+  between seconds/minutes/hours - independent of the static elevation
+  profile of the planned route (see below).
+- **Interactive waypoint editor as a live map overlay**: a table of every
+  waypoint with altitude, name, and INAV mission parameters (action,
+  speed, P1-P3) - edits apply immediately. Waypoint markers on the map can
+  be dragged directly with the mouse (live-synced with the table and
+  route), a click selects and highlights the matching table row, and a
+  right-click opens a menu to edit or delete it. Table rows can be
+  reordered via drag-and-drop, "Delete Selected"/"Delete All" remove
+  waypoints precisely, "Insert" drops a new point exactly between two
+  existing ones, "Reverse Route" flips the flight direction, and
+  altitude/speed can be bulk-applied to the current selection or all
+  waypoints. Export/import as INAV `.mission` JSON and a terrain check
+  (colors waypoints red/yellow/green by ground clearance) are built right
+  into the overlay.
 - **Right-click the map** to open a menu for dropping a waypoint/start
   point/end point, teaching the home position directly at the clicked
   spot, and a "View" submenu with the most-used map toggles (auto-center,
   map orientation, waypoint editor, coordinate readout).
+- **Model selection directly in the telemetry bar**: a dropdown above the
+  dashboard fields lists every saved model profile; picking one instantly
+  applies its battery warning/critical voltage thresholds (both the
+  on-screen display and voice alerts) - a "+ Add New Model..." entry opens
+  the profile-creation dialog directly. Profiles also store the exact
+  battery specs (chemistry, cell count, nominal capacity in mAh) alongside
+  the dashboard layout.
+- **Optimized map performance**: GPU-accelerated rendering, a 500MB disk
+  cache for the map, and position updates throttled to 5Hz keep the map
+  smooth even at a high telemetry rate; new flight-path points are only
+  recorded once the model has moved a configurable minimum distance
+  (default 1.5m), so GPS jitter doesn't get recorded as movement.
 - **No-fly zones**: load restricted areas from GeoJSON or CSV and show them
   as red circles/polygons on the map (toggleable).
 - **Configurable home position**: sets where the map centers on startup,
@@ -532,9 +603,11 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   line, independent of the actually-flown track; export as GPX, CSV, or
   INAV `.mission` JSON.
 - **Independently controllable track recording** (start/pause/export
-  overlay on the map, with a GPX/KML/CSV format prompt) and **flight log**
-  (continuous CSV recording of all telemetry data with freely selectable
-  columns and interval) - two separate recordings for different purposes.
+  overlay on the map, with a GPX/KML/CSV format prompt, and an **Auto
+  option enabled by default** that starts recording automatically once the
+  model actually starts moving) and **flight log** (continuous CSV
+  recording of all telemetry data with freely selectable columns and
+  interval) - two separate recordings for different purposes.
 - **WiFi (UDP) or a direct USB cable** as the telemetry connection, switchable
   at runtime - as is the protocol (MAVLink or CRSF/TBS Crossfire) and the
   UI language (German/English).
@@ -647,19 +720,22 @@ connection (WiFi/UDP or USB) and protocol (MAVLink or CRSF) - Cancel just
 keeps whatever was passed on the command line/the defaults, and an extra
 button starts demo mode directly.
 
-While the app is running, the menu bar is organized into eight groups -
-File | Route & Planning | No-Fly Zones | Display & Map | Telemetry &
-Hardware | Tools & Simulation | Settings | Help:
+While the app is running, the menu bar is organized into seven groups -
+File | Route & Planning | Display & Map | Telemetry & Hardware | Tools &
+Simulation | Settings | Help:
 
 - **File → Export Flight Path as GPX/KML** saves every GPS point recorded
   so far during the current flight (or use the map's track overlay below,
   which also offers CSV).
 - **Route & Planning → Waypoint Mode** turns on click-to-add mode on the
-  map; clicking an existing waypoint removes it again. **Remove Last
-  Waypoint / Clear Route** for the rest of the editing, **Show Waypoint
-  Editor** toggles the editor overlay (see below), **Dock Waypoint Editor
-  in Dashboard** embeds it below the telemetry fields instead. **Right-clicking** the
-  map always opens a menu (independent of Waypoint Mode) for Waypoint/
+  map. Clicking an existing waypoint marker selects it and highlights the
+  matching row in the waypoint editor; right-clicking a marker opens a menu
+  to edit or delete it. **Remove Last Waypoint / Clear Route** for the rest
+  of the editing, **Show Waypoint Editor** toggles the interactive editor
+  overlay (see above - drag-and-drop reordering, bulk edit, insert between
+  points, reverse route), **Dock Waypoint Editor in Dashboard** embeds it
+  below the telemetry fields instead. **Right-clicking** the map itself
+  always opens a menu (independent of Waypoint Mode) for Waypoint/
   Start Point/End Point, "Set as Home", and a "View" submenu.
 - **Route & Planning → Import/Export Route...** loads or saves a waypoint
   list as GPX, CSV, iNav `.mission` (classic MW-XML or modern JSON
@@ -668,31 +744,33 @@ Hardware | Tools & Simulation | Settings | Help:
   pattern generator: from two corner points or a center+radius (also via
   "use current position"), it builds a zigzag route with configurable
   track spacing, orientation, and altitude, replacing the current route.
-- **No-Fly Zones → Load No-Fly Zones...** imports restricted areas from
+- **Display & Map → Map Type** switches between OpenStreetMap and Esri
+  satellite imagery. **No-Fly Zones** (submenu) groups everything related
+  to restricted areas: **Load No-Fly Zones...** imports them from
   GeoJSON/CSV, **Show No-Fly Zones** toggles them, **Enable Distance
   Warning (50m)** triggers a spoken warning and a status bar message as
-  soon as the model gets within 50 m of a zone. **OpenAIP Settings...**
+  soon as the model gets within 50 m of a zone, **OpenAIP Settings...**
   stores an optional API key and the preferred airspace types (CTR,
   Restricted, Prohibited, etc.), **Load OpenAIP Zones** then downloads
   matching airspace data for the current home position and shows it as
-  no-fly zones.
-- **Display & Map → Map Type** switches between OpenStreetMap and Esri
-  satellite imagery. **Auto-Center** toggles automatically re-centering
+  no-fly zones. **Auto-Center** toggles automatically re-centering
   the map on the current position (also reachable via the lock button
   directly on the map, Google-Maps style). **Heading Up/North Up**
   rotates the whole map to match the current course (also reachable via
   the second fixed map button). **Jump to Current Position** (`Ctrl+Home`)
   immediately centers the map, independent of Auto-Center. **Show
-  Waypoint Editor**, **Show Tracking Overlay**, **Show Altitude Track**,
-  **Show Coordinates Under Cursor**, and **Enable RSSI/LQ Heatmap**
-  (colors the flown path live by link quality) toggle the respective
-  overlays/modes. **Vehicle Type** picks the map marker (quadcopter/wing/
-  airplane), **Show Artificial Horizon** toggles the horizon overlay
-  (freely draggable/resizable, **Position**/**Size** additionally offer
-  fixed presets). **Dock Artificial Horizon in Dashboard** and **Dock
-  Altitude Track in Dashboard** embed the respective overlays directly
-  into the telemetry bar instead of floating on the map (side by side in
-  a row above the telemetry fields, see the dashboard section).
+  Waypoint Editor**, **Map Performance...** (set the minimum-distance
+  threshold for new flight-path points), **Show Tracking Overlay**,
+  **Show Altitude Track**, **Time Unit (Altitude Chart)**
+  (seconds/minutes/hours for the altitude chart's X axis), **Show
+  Coordinates Under Cursor**, and **Enable RSSI/LQ Heatmap** (colors the
+  flown path live by link quality) round out the menu. **Vehicle Type**
+  picks the map marker (quadcopter/wing/airplane), **Show Artificial
+  Horizon** toggles the horizon overlay (**Position**/**Size** offer fixed
+  presets). **Dock Artificial Horizon in Dashboard** and **Dock Altitude
+  Track in Dashboard** (both on by default) embed the respective overlays
+  directly into the telemetry bar instead of floating on the map (side by
+  side in a row above the telemetry fields, see the dashboard section).
   **Customize Dashboard...** is mirrored here for quick access (see
   Settings).
 - **Telemetry & Hardware → Connection...** switches at runtime between
@@ -702,12 +780,14 @@ Hardware | Tools & Simulation | Settings | Help:
   which telemetry fields get recorded and at what interval (0.1-60s),
   **Logging Active** asks for a target path and then keeps writing one
   CSV row per interval. **Battery Alert...** picks LiPo or Li-Ion
-  (pre-filling matching default thresholds) plus cell count and the exact
-  warning/critical voltages. **Antenna Tracker / Telemetry Output...**
-  sends the live position as MAVLink or NMEA over serial or UDP to an
-  external tracker (start/stop directly in the dialog). **Manage Model
-  Profiles...** saves the current battery and dashboard settings under a
-  name and reloads them later with one click.
+  (pre-filling matching default thresholds) plus cell count, the exact
+  warning/critical voltages, and the battery's nominal capacity (mAh).
+  **Antenna Tracker / Telemetry Output...** sends the live position as
+  MAVLink or NMEA over serial or UDP to an external tracker (start/stop
+  directly in the dialog). **Manage Model Profiles...** saves the current
+  battery and dashboard settings under a name and reloads them later with
+  one click - or use the model dropdown right in the telemetry bar for
+  quicker switching (see above).
 - **Tools & Simulation → Demo Mode / Plan Mode** switches at runtime
   between real telemetry, simulated data, and the telemetry-free plan
   mode; both are also directly selectable from the startup connection
@@ -823,8 +903,11 @@ elrs_ground_station/
   core/
     telemetry_state.py     shared data model
     route.py                waypoint/route data model (RouteManager), incl. INAV
-                             mission fields (action/speed/P1-P3) and typed
-                             waypoints (waypoint/start/end) from the right-click menu
+                             mission fields (action/speed/P1-P3), typed waypoints
+                             (waypoint/start/end) from the right-click menu, and
+                             structural edits (remove many, move, reorder, insert
+                             between two points, reverse, bulk altitude/speed) for
+                             interactive editing
     geo.py                   haversine distance + bearing + local meter projection
                               (equirectangular), shared by grid_pattern.py and
                               nfz_proximity.py
@@ -855,7 +938,7 @@ elrs_ground_station/
     serial_ports.py            helper for --list-ports
     demo_worker.py              simulated telemetry
   ui/
-    main_window.py           main window, wires workers <-> UI, the 8-group menu,
+    main_window.py           main window, wires workers <-> UI, the 7-group menu,
                               startup popup, plan mode, right-click/view-action dispatch
     connection_dialog.py     WiFi/USB + protocol switch dialog (also used as startup
                               popup, incl. demo/plan mode buttons)
@@ -881,16 +964,20 @@ elrs_ground_station/
                               "Offline use")
     map_buttons.py            fixed Google-Maps-style map buttons (auto-center lock,
                               map orientation)
-    route_bridge.py          QWebChannel bridge for waypoint/context-menu/coordinate
-                              events (JS -> Python)
+    route_bridge.py          QWebChannel bridge for waypoint select/move/context-menu,
+                              map context-menu, and coordinate events (JS -> Python)
     draggable_overlay.py      base class for draggable/resizable map overlays
                               (corner resize grip)
     horizon_widget.py        artificial horizon (QPainter, draggable/resizable overlay)
-    route_editor_overlay.py   waypoint editor as a live overlay (table, INAV mission
-                              export/import, terrain check)
+    route_editor_overlay.py   interactive waypoint editor as a live overlay (table with
+                              click-to-select, drag-and-drop row reorder, bulk edit,
+                              insert/reverse route, INAV mission export/import,
+                              terrain check)
     track_overlay.py          start/pause/export overlay for track recording
     dashboard.py             fully configurable telemetry bar with status icons,
-                              multi-row layout, dockable to any side of the window
+                              multi-row layout, uniform field width, dockable to any
+                              side of the window, plus a model-selection dropdown up
+                              top (incl. "+ Add New Model...")
     icons.py                  QPainter-drawn dashboard icons (no image files)
   export/
     track_export.py         GPX/KML/CSV export of the flown path
