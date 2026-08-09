@@ -99,6 +99,10 @@ ALTITUDE_TRACK_TIME_UNITS = (
     ("menu_altitude_track_unit_h", "h"),
 )
 DEFAULT_ALTITUDE_TRACK_TIME_UNIT = "s"
+# Initial telemetry-panel share of the window's width (side-docked) or
+# height (top/bottom-docked) - just the starting point, the splitter stays
+# freely draggable afterwards like any other pane.
+DEFAULT_DASHBOARD_SPLIT_FRACTION = 0.20
 
 
 def _resize_from_saved(widget, size) -> None:
@@ -1038,11 +1042,13 @@ class MainWindow(QMainWindow):
         self._splitter.setStretchFactor(map_index, 1)
         self._splitter.setStretchFactor(dashboard_index, 0)
 
-        # Give the telemetry panel a sensible default of ~25% of the
+        # Give the telemetry panel a sensible default of ~20% of the
         # window's extent (width when side-docked, height when docked to
         # top/bottom) instead of Qt's plain even split - the map is the
         # primary content and the dashboard's stretch factor of 0 above
         # keeps it from growing further on its own as the window resizes.
+        # Purely a starting point: the splitter handle stays freely
+        # draggable afterwards, same as any other QSplitter pane.
         # Deferred via singleShot(0): calling setSizes() before the window
         # has ever been shown (no real geometry/size-hints resolved yet)
         # doesn't reliably stick - Qt's first-show layout pass can override
@@ -1052,7 +1058,7 @@ class MainWindow(QMainWindow):
             total = self.width() if side_docked else self.height()
             if total <= 0:
                 return
-            dashboard_extent = round(total * 0.25)
+            dashboard_extent = round(total * DEFAULT_DASHBOARD_SPLIT_FRACTION)
             sizes = [0, 0]
             sizes[dashboard_index] = dashboard_extent
             sizes[map_index] = total - dashboard_extent

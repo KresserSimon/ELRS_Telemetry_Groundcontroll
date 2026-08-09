@@ -80,6 +80,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   .route-wp-dot-selected {
     background: #3ba7ff !important; box-shadow: 0 0 0 3px rgba(59,167,255,0.45);
   }
+  .nfz-tooltip-text { display: inline-block; }
   .coord-overlay {
     position: absolute; display: none; z-index: 999; pointer-events: none;
     background: rgba(18,22,28,0.88); color: #e8e8e8; font-size: 11px; font-family: monospace;
@@ -447,6 +448,11 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
   var routeMode = false;
   var routeBridge = null;
 
+  function escapeHtml(text) {
+    var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(text).replace(/[&<>"']/g, function (c) { return map[c]; });
+  }
+
   function formatDistance(m) {
     return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
   }
@@ -646,7 +652,19 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
         var latlngs = zone.points.map(function (p) { return [p[0], p[1]]; });
         layer = L.polygon(latlngs, { color: '#e74c3c', weight: 2, fillColor: '#e74c3c', fillOpacity: 0.2 });
       }
-      layer.bindTooltip(zone.name, { sticky: true });
+      // Wrapped in a span (rather than bindTooltip(zone.name) directly) so
+      // the tooltip text can be counter-rotated the same way markers are -
+      // the tooltip's own outer element carries Leaflet's position
+      // transform, so rotating that directly would break its placement.
+      // Registering the Leaflet Tooltip object itself into the same
+      // registerCounterRotated() pool markers use (it has its own
+      // getElement() too) means it also stays correctly upright if the
+      // map keeps rotating while the tooltip happens to still be open,
+      // not just at the moment it was first shown.
+      layer.bindTooltip('<span class="nfz-tooltip-text">' + escapeHtml(zone.name) + '</span>', { sticky: true });
+      layer.on('tooltipopen', function (e) {
+        registerCounterRotated(e.tooltip);
+      });
       if (nfzVisible) { layer.addTo(map); }
       nfzLayers.push(layer);
     });

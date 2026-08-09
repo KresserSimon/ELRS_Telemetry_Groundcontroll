@@ -18,18 +18,26 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
 - **Google-Maps-artige Kartensteuerung**: ein fixer Button sperrt/löst die
   automatische Kameraverfolgung der Drohne, ein zweiter schaltet zwischen
   Norden-oben und Drohnenrichtung-oben um (die ganze Karte dreht sich dabei
-  mit dem aktuellen Kurs).
+  mit dem aktuellen Kurs, das Drohnensymbol selbst zeigt dabei immer nach
+  oben). Home-Symbol, Wegpunkt-Nummern, Segment-Distanzangaben und
+  Sperrzonen-Namen bleiben dabei stets aufrecht/lesbar, unabhängig von der
+  Kartendrehung – nur die in die Kartenkacheln selbst eingebrannten
+  Orts-/Straßennamen (OpenStreetMap/Satellit) drehen sich zwangsläufig mit,
+  da sie Teil der Bildkachel sind, wie bei jeder rasterbild-basierten
+  Kartendrehung (Luftfahrt-/Marine-Navigationsgeräte eingeschlossen).
 - **Frei konfigurierbares Dashboard**: GPS, Funkverbindung, Akku (inkl.
   Strom/mAh und Min-Zellspannung), zusätzliche Sensoren (Vario, Baro-Höhe,
   RPM, Temperatur) und Long-Range-Werte (Geschwindigkeit, Entfernung/Peilung
   zur Home-Position, Flugzeit) – jedes einzelne Feld lässt sich ein-/aus-
   blenden, Gruppen sind per Drag & Drop umsortierbar und auf 1–3 Zeilen
   verteilbar, und das ganze Dashboard lässt sich oben, unten, links oder
-  rechts im Fenster andocken (als Fenster-Trennbalken frei in der Größe
-  verstellbar) – alles wird als persönlicher Standard gespeichert. Alle
-  Felder teilen sich dabei eine einheitliche Mindestbreite (an das jeweils
-  breiteste sichtbare Feld angepasst) für ein symmetrisches, aufgeräumtes
-  Raster statt ungleichmäßiger Spalten.
+  rechts im Fenster andocken. Startgröße dabei ca. 20 % der Fensterbreite
+  (bzw. -höhe bei oben/unten-Andockung), der Trennbalken zwischen Karte und
+  Dashboard bleibt danach jederzeit frei mit der Maus verstellbar wie jeder
+  andere Fenster-Trennbalken – alles wird als persönlicher Standard
+  gespeichert. Alle Felder teilen sich dabei eine einheitliche
+  Mindestbreite (an das jeweils breiteste sichtbare Feld angepasst) für
+  ein symmetrisches, aufgeräumtes Raster statt ungleichmäßiger Spalten.
 - **Künstlicher Horizont und Live-Höhenverlauf standardmäßig direkt im
   Telemetrie-Panel eingebettet** (Größe per Voreinstellungen im Menü
   verstellbar), lassen sich aber jederzeit als frei verschieb- und
@@ -527,15 +535,23 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   position), and a selectable vehicle marker (quadcopter, wing, airplane).
 - **Google-Maps-style map controls**: a fixed button locks/releases the
   camera following the drone, a second one switches between north-up and
-  heading-up (the whole map rotates to match the current course).
+  heading-up (the whole map rotates to match the current course, while the
+  drone marker itself always points straight up). The home icon, waypoint
+  numbers, segment distance labels, and no-fly-zone names all stay
+  upright/readable regardless of map rotation - only the place/street
+  names baked into the map tiles themselves (OpenStreetMap/satellite)
+  necessarily rotate along with the image, as with any raster-tile-based
+  map rotation (the same is true of aviation/marine navigation displays).
 - **A fully configurable dashboard**: GPS, radio link, battery (incl.
   current/mAh and minimum cell voltage), extra sensors (vario, baro
   altitude, RPM, temperature), and long-range readouts (speed,
   distance/bearing to home, flight timer) - every individual field can be
   shown or hidden, groups can be drag-and-dropped into a new order and
   spread across 1-3 rows, and the whole dashboard can be docked to the
-  top, bottom, left, or right of the window (freely resizable as a
-  window split) - all saved as your personal default. Every field shares a
+  top, bottom, left, or right of the window. Starting size is ~20% of the
+  window's width (or height when docked top/bottom); the splitter between
+  map and dashboard stays freely draggable afterwards like any other
+  window split - all saved as your personal default. Every field shares a
   single uniform minimum width (sized to whichever visible field is
   widest) for a tidy, symmetric grid instead of ragged columns.
 - **Artificial horizon and live altitude track embedded directly in the
