@@ -249,6 +249,7 @@ class MainWindow(QMainWindow):
         self._route_editor_action.setCheckable(True)
         self._route_editor_action.setChecked(True)
         self._route_editor_action.toggled.connect(self._route_overlay.setVisible)
+        self._route_overlay.closed.connect(lambda: self._route_editor_action.setChecked(False))
 
         route_menu.addSeparator()
         import_route_action = route_menu.addAction("")
@@ -349,6 +350,14 @@ class MainWindow(QMainWindow):
         self._altitude_track_action.setCheckable(True)
         self._altitude_track_action.setChecked(True)
         self._altitude_track_action.toggled.connect(self._altitude_track_overlay.setVisible)
+        self._altitude_track_overlay.closed.connect(lambda: self._altitude_track_action.setChecked(False))
+
+        self._track_overlay_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._track_overlay_action, "menu_track_overlay"))
+        self._track_overlay_action.setCheckable(True)
+        self._track_overlay_action.setChecked(True)
+        self._track_overlay_action.toggled.connect(self._track_overlay.setVisible)
+        self._track_overlay.closed.connect(lambda: self._track_overlay_action.setChecked(False))
 
         vehicle_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((vehicle_menu, "menu_view_vehicle"))
@@ -368,6 +377,7 @@ class MainWindow(QMainWindow):
         horizon_toggle_action.setCheckable(True)
         horizon_toggle_action.setChecked(True)
         horizon_toggle_action.toggled.connect(self._horizon.setVisible)
+        self._horizon.closed.connect(lambda: horizon_toggle_action.setChecked(False))
 
         horizon_pos_menu = view_map_menu.addMenu("")
         self._i18n_menus.append((horizon_pos_menu, "menu_view_horizon_position"))

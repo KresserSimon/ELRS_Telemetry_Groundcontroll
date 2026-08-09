@@ -11,7 +11,7 @@ press before it ever reached a zone check.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
@@ -60,28 +60,68 @@ class _ResizeGrip(QWidget):
         painter.end()
 
 
+class _CloseButton(QWidget):
+    SIZE = 14
+
+    def __init__(self, overlay: "DraggableOverlay") -> None:
+        super().__init__(overlay)
+        self._overlay = overlay
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Accept (don't propagate) so the overlay body's own drag
+            # handler never sees this press as the start of a window-move.
+            event.accept()
+            self._overlay.close_overlay()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(255, 255, 255, 170))
+        pen.setWidth(1.4)
+        painter.setPen(pen)
+        m, s = 3, self.SIZE
+        painter.drawLine(m, m, s - m, s - m)
+        painter.drawLine(s - m, m, m, s - m)
+        painter.end()
+
+
 class DraggableOverlay(QWidget):
     # Subclasses may override to change how small/large a drag-resize can go.
     MIN_WIDTH = 120
     MIN_HEIGHT = 70
+
+    # Emitted when the user clicks the close (x) button - MainWindow
+    # connects this per-overlay to uncheck the matching "show ... " menu
+    # action, so the overlay stays reachable again afterwards.
+    closed = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self._drag_start = None
         self._resize_grip = _ResizeGrip(self)
+        self._close_button = _CloseButton(self)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._resize_grip.move(self.width() - _ResizeGrip.SIZE, self.height() - _ResizeGrip.SIZE)
+        self._close_button.move(self.width() - _CloseButton.SIZE - 4, 4)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        # The grip is created before subclasses add their own content in
-        # their __init__, so without this it would end up underneath
-        # whatever they add - raise it back to the top once everything
+        # Both are created before subclasses add their own content in
+        # their __init__, so without this they'd end up underneath
+        # whatever they add - raise them back to the top once everything
         # exists and the widget is actually about to be shown.
         self._resize_grip.raise_()
+        self._close_button.raise_()
+
+    def close_overlay(self) -> None:
+        self.setVisible(False)
+        self.closed.emit()
 
     def request_resize(self, width: int, height: int) -> None:
         """Apply a user-driven resize from the corner grip. Subclasses with
