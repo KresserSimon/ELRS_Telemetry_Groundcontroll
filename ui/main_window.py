@@ -1033,8 +1033,32 @@ class MainWindow(QMainWindow):
         else:
             self._splitter.insertWidget(0, self._map)
             self._splitter.insertWidget(1, self._dashboard)
-        self._splitter.setStretchFactor(self._splitter.indexOf(self._map), 1)
-        self._splitter.setStretchFactor(self._splitter.indexOf(self._dashboard), 0)
+        map_index = self._splitter.indexOf(self._map)
+        dashboard_index = self._splitter.indexOf(self._dashboard)
+        self._splitter.setStretchFactor(map_index, 1)
+        self._splitter.setStretchFactor(dashboard_index, 0)
+
+        # Give the telemetry panel a sensible default of ~25% of the
+        # window's extent (width when side-docked, height when docked to
+        # top/bottom) instead of Qt's plain even split - the map is the
+        # primary content and the dashboard's stretch factor of 0 above
+        # keeps it from growing further on its own as the window resizes.
+        # Deferred via singleShot(0): calling setSizes() before the window
+        # has ever been shown (no real geometry/size-hints resolved yet)
+        # doesn't reliably stick - Qt's first-show layout pass can override
+        # it, collapsing one pane to 0. Running it right after the current
+        # event-loop pass finishes (geometry settled) is what actually holds.
+        def _apply_split_ratio() -> None:
+            total = self.width() if side_docked else self.height()
+            if total <= 0:
+                return
+            dashboard_extent = round(total * 0.25)
+            sizes = [0, 0]
+            sizes[dashboard_index] = dashboard_extent
+            sizes[map_index] = total - dashboard_extent
+            self._splitter.setSizes(sizes)
+
+        QTimer.singleShot(0, _apply_split_ratio)
 
     def _set_horizon_docked(self, docked: bool) -> None:
         if docked:
