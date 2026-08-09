@@ -794,8 +794,12 @@ class MainWindow(QMainWindow):
 
     def _apply_dashboard_position(self, position: str) -> None:
         self._dashboard_position = position
-        horizontal = position in ("left", "right")
-        self._splitter.setOrientation(Qt.Orientation.Horizontal if horizontal else Qt.Orientation.Vertical)
+        side_docked = position in ("left", "right")
+        # A side-docked (left/right) splitter is horizontal, and the
+        # dashboard's own fields switch to a vertical stack to fit the
+        # resulting narrow column instead of overflowing wide rows.
+        self._dashboard.set_vertical(side_docked)
+        self._splitter.setOrientation(Qt.Orientation.Horizontal if side_docked else Qt.Orientation.Vertical)
         if position in ("top", "left"):
             self._splitter.insertWidget(0, self._dashboard)
             self._splitter.insertWidget(1, self._map)

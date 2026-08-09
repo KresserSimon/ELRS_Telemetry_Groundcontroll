@@ -100,10 +100,12 @@ class Dashboard(QWidget):
         self._fields: list[_Field] = []
         self._boxes_by_key: Dict[str, QGroupBox] = {}
         self._fields_by_box: dict = {}
+        self._icon_by_box: dict = {}
         self._connected = False
         self._visible_fields: set = set()
         self._group_order: List[str] = []
         self._rows = DEFAULT_ROWS
+        self._vertical = False
 
         self._home = None       # (lat, lon) of the first GPS fix this session
         self._flight_start = None  # time.monotonic() at that first fix
@@ -195,11 +197,45 @@ class Dashboard(QWidget):
             icon_label = _icon_label(icon_pixmap)
         if icon_label is not None:
             layout.addWidget(icon_label)
+            self._icon_by_box[box] = icon_label
         self._fields_by_box[box] = list(fields)
         for f in fields:
             layout.addWidget(f)
             self._fields.append(f)
         return box
+
+    def _rebuild_box_layout(self, box: QGroupBox, vertical: bool) -> None:
+        """Swap a group's internal field layout between a horizontal row
+        (icon + fields side by side - the default, for a top/bottom-docked
+        dashboard) and a vertical stack (for a left/right-docked one, where
+        a wide row would just overflow a narrow column)."""
+        old_layout = box.layout()
+        if old_layout is not None:
+            while old_layout.count():
+                old_layout.takeAt(0)
+            # Qt only allows setLayout() once per widget - steal the old
+            # (now-empty) layout onto a throwaway widget so it detaches.
+            QWidget().setLayout(old_layout)
+
+        new_layout = QVBoxLayout() if vertical else QHBoxLayout()
+        new_layout.setSpacing(6 if vertical else 10)
+        icon_label = self._icon_by_box.get(box)
+        if icon_label is not None:
+            new_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignHCenter if vertical else Qt.AlignmentFlag(0))
+        for f in self._fields_by_box.get(box, []):
+            new_layout.addWidget(f)
+        box.setLayout(new_layout)
+
+    def set_vertical(self, vertical: bool) -> None:
+        """Reflow every group's fields (and the row/column grouping) between
+        horizontal (top/bottom dock) and vertical (left/right dock)."""
+        if vertical == self._vertical:
+            return
+        self._vertical = vertical
+        for box in self._boxes_by_key.values():
+            if box in self._fields_by_box:
+                self._rebuild_box_layout(box, vertical)
+        self.apply_layout(self._group_order, self._rows)
 
     # ------------------------------------------------------- configuration
 
@@ -232,9 +268,11 @@ class Dashboard(QWidget):
         return self._rows
 
     def apply_layout(self, group_order: List[str], rows: int) -> None:
-        """Re-arrange the group boxes into `rows` rows, in `group_order` -
-        any group missing from a stale/incomplete saved order is appended at
-        the end rather than dropped, so newly added groups stay visible."""
+        """Re-arrange the group boxes into `rows` rows (or, when docked
+        left/right - see set_vertical() - `rows` side-by-side columns), in
+        `group_order`. Any group missing from a stale/incomplete saved
+        order is appended at the end rather than dropped, so newly added
+        groups stay visible."""
         ordered_keys = [k for k in group_order if k in self._boxes_by_key]
         ordered_keys += [k for k in self._boxes_by_key if k not in ordered_keys]
         self._group_order = ordered_keys
@@ -242,24 +280,44 @@ class Dashboard(QWidget):
 
         for box in boxes:
             box.setParent(None)
-        while self._outer.count():
-            item = self._outer.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
+
+        # The outer container itself only needs rebuilding when the
+        # top/bottom vs. left/right orientation actually changed (Qt only
+        # allows one setLayout() per widget) - otherwise just clear and
+        # refill the existing one, exactly as before orientation support.
+        wanted_outer_cls = QHBoxLayout if self._vertical else QVBoxLayout
+        if not isinstance(self._outer, wanted_outer_cls):
+            old_outer = self._outer
+            while old_outer.count():
+                item = old_outer.takeAt(0)
+                w = item.widget()
+                if w is not None:
+                    w.deleteLater()
+            QWidget().setLayout(old_outer)
+            self._outer = wanted_outer_cls()
+            self._outer.setContentsMargins(8, 6, 8, 6)
+            self._outer.setSpacing(4)
+            self.setLayout(self._outer)
+        else:
+            while self._outer.count():
+                item = self._outer.takeAt(0)
+                w = item.widget()
+                if w is not None:
+                    w.deleteLater()
 
         self._rows = max(1, min(rows, len(boxes) or 1))
         chunk_size = max(1, math.ceil(len(boxes) / self._rows)) if boxes else 1
         chunks = [boxes[i:i + chunk_size] for i in range(0, len(boxes), chunk_size)] or [[]]
+        lane_cls = QVBoxLayout if self._vertical else QHBoxLayout
         for chunk in chunks:
-            row_widget = QWidget()
-            row_layout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(12)
+            lane_widget = QWidget()
+            lane_layout = lane_cls(lane_widget)
+            lane_layout.setContentsMargins(0, 0, 0, 0)
+            lane_layout.setSpacing(12)
             for box in chunk:
-                row_layout.addWidget(box)
-            row_layout.addStretch(1)
-            self._outer.addWidget(row_widget)
+                lane_layout.addWidget(box)
+            lane_layout.addStretch(1)
+            self._outer.addWidget(lane_widget)
 
     # ------------------------------------------------------------- session
 
