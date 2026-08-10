@@ -178,10 +178,17 @@ class TileCacheSchemeHandler(QWebEngineUrlSchemeHandler):
 
     @staticmethod
     def _reply(job: QWebEngineUrlRequestJob, layer: str, data: bytes) -> None:
-        buffer = QBuffer(job)
-        buffer.setData(data)
-        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
         try:
+            # QBuffer(job) itself touches job's C++ object (to set up the
+            # parent/child relationship) - constructing it has to be inside
+            # the guard too, not just the job.reply() call after it. Rapid
+            # zooming cancels many in-flight tile requests at once (each
+            # zoom level change supersedes the previous one's requests),
+            # which is exactly when a reply for an already-destroyed job is
+            # most likely to arrive here.
+            buffer = QBuffer(job)
+            buffer.setData(data)
+            buffer.open(QIODevice.OpenModeFlag.ReadOnly)
             job.reply(_MIME_TYPES.get(layer, b"image/png"), buffer)
         except RuntimeError:
             pass  # job's C++ object was already destroyed (page navigated away)
