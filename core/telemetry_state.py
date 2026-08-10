@@ -25,6 +25,7 @@ class TelemetryState:
     battery_capacity_used: Optional[float] = None  # mAh
 
     groundspeed: Optional[float] = None    # m/s
+    airspeed: Optional[float] = None       # m/s (MAVLink VFR_HUD.airspeed only - CRSF has no equivalent)
 
     rssi: Optional[int] = None             # dBm
     link_quality: Optional[int] = None     # LQ percent, 0-100

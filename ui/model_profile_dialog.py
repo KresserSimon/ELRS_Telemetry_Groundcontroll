@@ -20,10 +20,15 @@ from PyQt6.QtWidgets import (
 
 from core import i18n
 from core.model_profiles import ModelProfile, load_profiles, save_profiles
+from ui.model_editor_dialog import ModelEditorDialog
 
 
 class ModelProfileDialog(QDialog):
     profile_loaded = pyqtSignal(ModelProfile)
+    # Emitted after editing a profile in place (not necessarily the one
+    # currently loaded/active) - the caller decides whether that also
+    # needs applying live, e.g. if it happens to be the active profile.
+    profile_edited = pyqtSignal(ModelProfile)
 
     def __init__(self, build_current_profile: Callable[[str], ModelProfile], parent=None) -> None:
         super().__init__(parent)
@@ -45,10 +50,13 @@ class ModelProfileDialog(QDialog):
 
         self._load_btn = QPushButton(i18n.tr("modelprofile_load_btn"))
         self._load_btn.clicked.connect(self._on_load)
+        self._edit_btn = QPushButton(i18n.tr("modelprofile_edit_btn"))
+        self._edit_btn.clicked.connect(self._on_edit)
         self._delete_btn = QPushButton(i18n.tr("modelprofile_delete_btn"))
         self._delete_btn.clicked.connect(self._on_delete)
         action_row = QHBoxLayout()
         action_row.addWidget(self._load_btn)
+        action_row.addWidget(self._edit_btn)
         action_row.addWidget(self._delete_btn)
 
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -72,6 +80,7 @@ class ModelProfileDialog(QDialog):
     def _update_button_states(self) -> None:
         has_selection = self._list.currentItem() is not None
         self._load_btn.setEnabled(has_selection)
+        self._edit_btn.setEnabled(has_selection)
         self._delete_btn.setEnabled(has_selection)
 
     def _selected_name(self) -> str:
@@ -93,6 +102,34 @@ class ModelProfileDialog(QDialog):
         if not name or name not in self._profiles:
             return
         self.profile_loaded.emit(self._profiles[name])
+
+    def _on_edit(self) -> None:
+        name = self._selected_name()
+        if not name or name not in self._profiles:
+            return
+        dialog = ModelEditorDialog(self._profiles[name], self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        edited = dialog.result_profile()
+        new_name = edited.name or name
+        # Carry over fields the editor doesn't touch (dashboard layout etc.)
+        # from the original profile rather than resetting them.
+        original = self._profiles[name]
+        edited.dashboard_visible_fields = original.dashboard_visible_fields
+        edited.dashboard_group_order = original.dashboard_group_order
+        edited.dashboard_rows = original.dashboard_rows
+
+        if new_name != name:
+            del self._profiles[name]
+        self._profiles[new_name] = edited
+        save_profiles(self._profiles)
+
+        self._list.clear()
+        self._list.addItems(sorted(self._profiles.keys()))
+        matches = self._list.findItems(new_name, Qt.MatchFlag.MatchExactly)
+        if matches:
+            self._list.setCurrentItem(matches[0])
+        self.profile_edited.emit(edited)
 
     def _on_delete(self) -> None:
         name = self._selected_name()

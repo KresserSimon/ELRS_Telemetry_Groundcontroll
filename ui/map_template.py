@@ -114,6 +114,7 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
 </div>
 <script>
   var map = L.map('map', { zoomControl: true }).setView([__CENTER_LAT__, __CENTER_LON__], __ZOOM__);
+  L.control.scale({ position: 'bottomleft', metric: true, imperial: false }).addTo(map);
 
   // Tile requests go through the elrstile:// custom scheme (registered in
   // ui/tile_cache_handler.py) instead of straight to the tile servers, so
@@ -692,6 +693,37 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
       if (enabled && !onMap) { l.addTo(map); }
       else if (!enabled && onMap) { map.removeLayer(l); }
     });
+  }
+
+  // ---------------------------------------------------- own geofence ring
+  //
+  // Deliberately a separate layer from the NFZ zones above, not a
+  // synthetic NoFlyZone: this is the pilot's own configured boundary
+  // (dashed ring, not a filled restricted area), independently
+  // toggleable from imported NFZ zones - see docs/feature_plan.md.
+
+  var geofenceLayer = null;
+  var geofenceVisible = true;
+
+  function setGeofence(lat, lon, radiusM) {
+    if (geofenceLayer) { map.removeLayer(geofenceLayer); geofenceLayer = null; }
+    if (lat === null || lon === null || radiusM === null || radiusM === undefined) { return; }
+    geofenceLayer = L.circle([lat, lon], {
+      radius: radiusM, color: '#3ba7ff', weight: 2, dashArray: '6,6', fill: false
+    });
+    if (geofenceVisible) { geofenceLayer.addTo(map); }
+  }
+
+  function clearGeofence() {
+    if (geofenceLayer) { map.removeLayer(geofenceLayer); geofenceLayer = null; }
+  }
+
+  function setGeofenceVisible(enabled) {
+    geofenceVisible = enabled;
+    if (!geofenceLayer) return;
+    var onMap = map.hasLayer(geofenceLayer);
+    if (enabled && !onMap) { geofenceLayer.addTo(map); }
+    else if (!enabled && onMap) { map.removeLayer(geofenceLayer); }
   }
 
   if (typeof qt !== 'undefined' && qt.webChannelTransport) {

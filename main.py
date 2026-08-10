@@ -96,7 +96,16 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     window = MainWindow(args)
-    window.show()
+    # The dashboard's real minimum height (telemetry field groups, docked
+    # horizon/altitude chart, etc.) already exceeds MainWindow.__init__'s
+    # coded fallback size (resize(1200, 800)) on typical layouts - opening
+    # at that fixed size forces Qt to grow the window past it anyway to
+    # satisfy the content's minimum, which looks like the window "takes
+    # over" whatever screen region it lands in rather than fitting
+    # normally. Starting maximized sidesteps that entirely regardless of
+    # screen size; the coded resize() still sets the size Qt restores to
+    # if the user un-maximizes.
+    window.showMaximized()
     return app.exec()
 
 

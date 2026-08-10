@@ -25,22 +25,25 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
   Orts-/Straßennamen (OpenStreetMap/Satellit) drehen sich zwangsläufig mit,
   da sie Teil der Bildkachel sind, wie bei jeder rasterbild-basierten
   Kartendrehung (Luftfahrt-/Marine-Navigationsgeräte eingeschlossen).
-- **Vektorkarte (MapLibre, experimentell)**: alternativ zur Raster-Karte
-  über **Anzeige & Karte → Kartentyp** wählbar. Nutzt echte
-  Vektor-Kartendaten (MapLibre GL) statt Bildkacheln – die Kartendrehung
-  bei Drohnenrichtung-oben läuft dabei nativ, und selbst die Orts-/
+- **Vektorkarte (MapLibre) als Standard-Kartentyp**, mit der klassischen
+  Raster-Karte (OpenStreetMap/Esri-Satellit) als Alternative über
+  **Anzeige & Karte → Kartentyp**. Nutzt echte Vektor-Kartendaten
+  (MapLibre GL) statt Bildkacheln – die Kartendrehung bei
+  Drohnenrichtung-oben läuft dabei nativ, und selbst die Orts-/
   Straßennamen auf der Karte selbst bleiben aufrecht/lesbar (die einzige
-  Einschränkung der Raster-Karte oben, die es hier nicht mehr gibt).
-  Enthält bereits Live-Position, Wegpunkt-Bearbeitung, Sperrzonen und
-  RSSI/LQ-Heatmap – nur der Kartentyp-Wechsel selbst braucht einen
-  Neustart. Kartendaten kommen aus lokal vorbereiteten Regions-Dateien für
-  Deutschland, Österreich, Schweiz und Italien (automatisch anhand der
-  Home-Position ausgewählt); mangels freier Online-Vektorkarten-Quelle wie
-  bei OpenStreetMap-Rasterkarten ist dafür aktuell noch kein "einfach
-  online nachladen" möglich. **Nur beim Start aus dem Quellcode
-  (`python main.py`) nutzbar, noch nicht in der fertigen .exe** – die
-  Regions-Dateien sind mit mehreren GB pro Land zu groß, um sie der App
-  beizulegen.
+  Einschränkung der Raster-Karte, die es hier nicht mehr gibt). Enthält
+  Live-Position, Wegpunkt-Bearbeitung, Sperrzonen und RSSI/LQ-Heatmap –
+  nur der Kartentyp-Wechsel selbst braucht einen Neustart. Kartendaten
+  kommen aus lokalen Regions-Dateien (automatisch anhand der Home-Position
+  ausgewählt), die über **Anzeige & Karte → Kartentyp → Vektorkarten-
+  Region herunterladen...** direkt in der App bezogen werden – lädt per
+  HTTP-Range-Requests nur die Kacheln der gewählten Region aus Protomaps'
+  öffentlichem Tages-Build, ohne die komplette Weltkarte herunterzuladen;
+  danach funktioniert die Region komplett offline. Kein automatisches
+  Update im Hintergrund – bei Bedarf einfach erneut herunterladen (siehe
+  Roadmap für einen möglichen Auto-Update-Mechanismus). Ist noch keine
+  passende Region vorhanden, bleibt die Karte leer und ein Hinweis-Dialog
+  erklärt, wie man eine herunterlädt.
 - **Frei konfigurierbares Dashboard**: GPS, Funkverbindung, Akku (inkl.
   Strom/mAh und Min-Zellspannung), zusätzliche Sensoren (Vario, Baro-Höhe,
   RPM, Temperatur) und Long-Range-Werte (Geschwindigkeit, Entfernung/Peilung
@@ -195,10 +198,11 @@ und im Feld alles ohne Verbindung verfügbar ist.
 Die **Vektorkarte** (siehe oben) hat eine andere Offline-Logik als die
 Raster-Karte: eine Regions-Datei enthält von vornherein die kompletten
 Kartendaten für das ganze Land, es muss also – anders als beim
-Kachel-Cache oben – vorher gar nichts online besucht werden. Da es aber
-noch keine kostenlose Online-Vektorkarten-Quelle wie bei OpenStreetMap
-gibt, kann aktuell auch nichts automatisch nachgeladen werden, falls das
-Gebiet außerhalb der vier vorbereiteten Regionen liegt.
+Kachel-Cache oben – vorher gar nichts online besucht werden, sobald sie
+einmal heruntergeladen ist. Der Download selbst (**Anzeige & Karte →
+Kartentyp → Vektorkarten-Region herunterladen...**) braucht natürlich
+einmalig eine Internetverbindung; danach ist die Region dauerhaft offline
+nutzbar, auch ohne erneuten Download.
 
 ## Installation
 
@@ -282,9 +286,11 @@ Simulation | Einstellungen | Hilfe:
   per "aktuelle Position verwenden") entsteht mit wählbarem Bahnabstand,
   Ausrichtung und Höhe eine Zickzack-Route, die die aktuelle Route
   ersetzt.
-- **Anzeige & Karte → Kartentyp** wechselt zwischen OpenStreetMap,
-  Esri-Satellitenbild und der neuen **Vektorkarte (MapLibre,
-  experimentell)** (Neustart erforderlich, siehe oben). **Sperrzonen**
+- **Anzeige & Karte → Kartentyp** wechselt zwischen der **Vektorkarte
+  (Standard)** und den klassischen Raster-Layern (OpenStreetMap,
+  Esri-Satellitenbild) (Neustart erforderlich, siehe oben).
+  **Vektorkarten-Region herunterladen...** öffnet den Download-Dialog für
+  die Vektorkarten-Regionsdaten. **Sperrzonen**
   (Untermenü) fasst alles rund um
   No-Fly-Zones zusammen: **Sperrzonen laden...** importiert sie aus
   GeoJSON/CSV, **Sperrzonen anzeigen** blendet sie ein/aus, **Distanz-
@@ -328,7 +334,12 @@ Simulation | Einstellungen | Hilfe:
   Spannungen und die Nennkapazität (mAh) des Akkus. **Antennen-Tracker /
   Telemetrie-Ausgabe...** sendet die Live-Position als MAVLink oder NMEA
   über seriell oder UDP an einen externen Tracker (Start/Stopp direkt im
-  Dialog). **Modell-Profile verwalten...** speichert die aktuellen Akku-
+  Dialog). **Dashboard-Größe** (Klein 75 % / Mittel 100 % / Groß 125 %)
+  skaliert Schrift, Icons und Abstände der gesamten Telemetrieleiste –
+  wird beim ersten Start automatisch anhand der Bildschirmgröße
+  vorbelegt (kompaktere Voreinstellung auf 1080p-Displays, großzügigere
+  auf 2K/4K), danach zählt die eigene Auswahl. **Modell-Profile
+  verwalten...** speichert die aktuellen Akku-
   und Dashboard-Einstellungen unter einem Namen und lädt sie später mit
   einem Klick wieder – schneller geht es über das Modellauswahl-Dropdown
   direkt in der Telemetrieleiste (siehe oben).
@@ -440,11 +451,17 @@ Die Exe behält die Konsole (kein `--windowed`), damit `--list-ports`,
 `--demo` usw. weiterhin normal über die Kommandozeile nutzbar sind; beim
 Doppelklick öffnet sich zusätzlich ein Konsolenfenster im Hintergrund.
 
-Die **Vektorkarte** funktioniert in der Exe nicht (siehe oben) – die
-benötigten Regions-Dateien sind mehrere GB pro Land groß und werden
-bewusst nicht mit `--add-data` gebündelt. Der Menüpunkt bleibt trotzdem
-sichtbar (für alle, die parallel auch aus dem Quellcode heraus starten),
-zeigt bei fehlender Regions-Datei aber nur eine leere Karte.
+Die **Vektorkarte** funktioniert auch in der Exe, braucht dort aber wie im
+Quellcode-Betrieb eine heruntergeladene Regions-Datei (**Anzeige & Karte →
+Kartentyp → Vektorkarten-Region herunterladen...**) – die Regions-Dateien
+selbst sind mehrere GB pro Land groß und werden bewusst nicht mit
+`--add-data` in die Exe gebündelt. Gesucht wird unter
+`%USERPROFILE%\.elrs_ground_station\pmtiles\` (dort landen auch neu
+heruntergeladene Regionen) sowie ersatzweise unter
+`dist\ELRS_GroundStation\_internal\assets\pmtiles\`, falls dort von Hand
+`*.pmtiles`-Dateien abgelegt wurden. Ist keine passende Datei vorhanden,
+zeigt ein Dialog beim Start, wo eine hingehört, und die Karte bleibt bis
+dahin leer.
 
 ## Architektur
 
@@ -513,13 +530,15 @@ elrs_ground_station/
                               RSSI/LQ-Heatmap-Track)
     leaflet_assets.py         Leaflet 1.9.4 (JS+CSS) fest eingebettet statt per CDN-Link,
                               damit die Karte auch ohne Internet lädt (siehe "Offline-Nutzung")
-    maplibre_template.py      Vektorkarte (MapLibre GL, experimentell): paralleler,
+    maplibre_template.py      Vektorkarte (MapLibre GL), Standard-Kartentyp: paralleler,
                               per Kartentyp-Menü umschaltbarer Karten-Renderer mit
                               nativer Kartenrotation, gleicher Fahrzeugsymbol-/Routen-/
                               NFZ-/Heatmap-Funktionsumfang wie map_template.py
     maplibre_assets.py         MapLibre GL JS/CSS + pmtiles-JS-Bibliothek fest eingebettet
     pmtiles_bridge.py         QWebChannel-Bruecke: liest Byte-Bereiche aus einer lokalen
                               .pmtiles-Regionsdatei fuer die Vektorkarte (kein Netzwerk nötig)
+    pmtiles_download_dialog.py Dialog zum Herunterladen einer Vektorkarten-Region
+    pmtiles_download_worker.py QThread-Wrapper um core/pmtiles_extract.py
     map_buttons.py            Fixe Google-Maps-artige Kartenbuttons (Auto-Center-Sperre,
                               Kartenausrichtung)
     route_bridge.py          QWebChannel-Bruecke fuer Wegpunkt-Auswahl/-Verschieben/
@@ -581,20 +600,22 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   names baked into the map tiles themselves (OpenStreetMap/satellite)
   necessarily rotate along with the image, as with any raster-tile-based
   map rotation (the same is true of aviation/marine navigation displays).
-- **Vector map (MapLibre, experimental)**: an alternative to the raster
-  map, selectable via **Display & Map → Map Type**. Uses real vector map
-  data (MapLibre GL) instead of image tiles - heading-up rotation is
-  native, and even the place/street labels on the map itself stay
-  upright/readable (the one limitation of the raster map above that goes
-  away here). Already includes live position tracking, waypoint editing,
-  no-fly zones, and the RSSI/LQ heatmap - only switching the map type
-  itself needs a restart. Map data comes from locally prepared region
-  files for Germany, Austria, Switzerland, and Italy (picked automatically
-  based on the home position); since there's no free online vector-tile
-  source the way OpenStreetMap provides for raster tiles, there's no
-  "just fetch it online" option yet. **Only usable running from source
-  (`python main.py`), not yet in the packaged .exe** - the region files
-  are several GB each, too large to ship with the app.
+- **Vector map (MapLibre) as the default map type**, with the classic
+  raster map (OpenStreetMap/Esri satellite) as the alternative via
+  **Display & Map → Map Type**. Uses real vector map data (MapLibre GL)
+  instead of image tiles - heading-up rotation is native, and even the
+  place/street labels on the map itself stay upright/readable (the one
+  limitation of the raster map that goes away here). Includes live
+  position tracking, waypoint editing, no-fly zones, and the RSSI/LQ
+  heatmap - only switching the map type itself needs a restart. Map data
+  comes from local region files (picked automatically based on the home
+  position), fetched directly in-app via **Display & Map → Map Type →
+  Download Vector Map Region...** - downloads only the selected region's
+  tiles from Protomaps' public daily build via HTTP range requests,
+  without downloading the whole planet; the region then works fully
+  offline afterward. No automatic background updates - just re-download
+  if you want a newer one. If no matching region exists yet, the map
+  stays blank and a dialog explains how to get one.
 - **A fully configurable dashboard**: GPS, radio link, battery (incl.
   current/mAh and minimum cell voltage), extra sensors (vario, baro
   altitude, RPM, temperature), and long-range readouts (speed,
@@ -740,10 +761,10 @@ everything is available offline in the field.
 The **vector map** (see above) has a different offline story than the
 raster map: a region file already contains the complete map data for the
 whole country up front, so unlike the tile cache above, nothing needs to
-be visited online beforehand at all. But since there's no free online
-vector-tile source the way OpenStreetMap provides for raster tiles,
-there's also no automatic fallback if the area falls outside the four
-prepared regions.
+be visited online beforehand at all once it's downloaded. The download
+itself (**Display & Map → Map Type → Download Vector Map Region...**)
+naturally needs a one-time internet connection; after that the region
+works offline permanently, no re-download required.
 
 ## Installation
 
@@ -821,9 +842,11 @@ Simulation | Settings | Help:
   pattern generator: from two corner points or a center+radius (also via
   "use current position"), it builds a zigzag route with configurable
   track spacing, orientation, and altitude, replacing the current route.
-- **Display & Map → Map Type** switches between OpenStreetMap, Esri
-  satellite imagery, and the new **Vector map (MapLibre, experimental)**
-  (restart required, see above). **No-Fly Zones** (submenu) groups everything related
+- **Display & Map → Map Type** switches between the **Vector map
+  (default)** and the classic raster layers (OpenStreetMap, Esri
+  satellite imagery) (restart required, see above). **Download Vector Map
+  Region...** opens the download dialog for vector-map region data.
+  **No-Fly Zones** (submenu) groups everything related
   to restricted areas: **Load No-Fly Zones...** imports them from
   GeoJSON/CSV, **Show No-Fly Zones** toggles them, **Enable Distance
   Warning (50m)** triggers a spoken warning and a status bar message as
@@ -862,7 +885,11 @@ Simulation | Settings | Help:
   warning/critical voltages, and the battery's nominal capacity (mAh).
   **Antenna Tracker / Telemetry Output...** sends the live position as
   MAVLink or NMEA over serial or UDP to an external tracker (start/stop
-  directly in the dialog). **Manage Model Profiles...** saves the current
+  directly in the dialog). **Dashboard Size** (Small 75% / Medium 100% /
+  Large 125%) scales the font, icons, and spacing of the entire telemetry
+  bar - auto-picked from the screen size on first launch (a more compact
+  default on 1080p displays, a roomier one on 2K/4K), your own choice
+  wins after that. **Manage Model Profiles...** saves the current
   battery and dashboard settings under a name and reloads them later with
   one click - or use the model dropdown right in the telemetry bar for
   quicker switching (see above).
@@ -973,11 +1000,15 @@ The exe keeps its console (no `--windowed`), so `--list-ports`, `--demo`
 etc. remain usable normally from the command line; double-clicking also
 opens a console window in the background.
 
-The **vector map** doesn't work in the exe (see above) - the required
-region files are several GB per country and are deliberately not bundled
-via `--add-data`. The menu entry still shows up (for anyone also running
-from source in parallel), but just displays an empty map if the region
-file isn't present.
+The **vector map** works in the exe too, but - same as running from
+source - needs a downloaded region file (**Display & Map → Map Type →
+Download Vector Map Region...**); the region files themselves are several
+GB per country and are deliberately not bundled via `--add-data`. Looked
+up under `%USERPROFILE%\.elrs_ground_station\pmtiles\` (new downloads
+also land there), with a fallback under
+`dist\ELRS_GroundStation\_internal\assets\pmtiles\` for anyone who places
+`*.pmtiles` files there by hand. If no matching file exists, a dialog on
+startup explains where one belongs, and the map stays blank until then.
 
 ## Architecture
 
@@ -1046,13 +1077,15 @@ elrs_ground_station/
     leaflet_assets.py         Leaflet 1.9.4 (JS+CSS) embedded inline instead of a CDN
                               link, so the map still loads with no internet (see
                               "Offline use")
-    maplibre_template.py      vector map (MapLibre GL, experimental): a parallel map
-                              renderer switchable via the Map Type menu, with native
+    maplibre_template.py      vector map (MapLibre GL), the default map type: a parallel
+                              map renderer switchable via the Map Type menu, with native
                               map rotation and the same vehicle marker/route/NFZ/
                               heatmap feature set as map_template.py
     maplibre_assets.py         MapLibre GL JS/CSS + the pmtiles JS library, embedded inline
     pmtiles_bridge.py         QWebChannel bridge: reads byte ranges from a local
                               .pmtiles region file for the vector map (no network needed)
+    pmtiles_download_dialog.py Dialog for downloading a vector-map region
+    pmtiles_download_worker.py QThread wrapper around core/pmtiles_extract.py
     map_buttons.py            fixed Google-Maps-style map buttons (auto-center lock,
                               map orientation)
     route_bridge.py          QWebChannel bridge for waypoint select/move/context-menu,

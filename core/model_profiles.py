@@ -26,6 +26,17 @@ class ModelProfile:
     dashboard_group_order: List[str] = field(default_factory=list)
     dashboard_rows: int = 1
 
+    geofence_enabled: bool = False
+    geofence_radius_m: float = 120.0
+    geofence_max_alt_m: float = 120.0
+
+    energy_rth_speed_assumption_ms: float = 5.0
+
+    # Was a purely global menu setting (MainWindow._vehicle_group) with no
+    # link to which model is selected - now travels with the profile, see
+    # docs/feature_plan.md's "Erweiterter Modell-Editor".
+    vehicle_type: str = "quad"
+
 
 def load_profiles() -> Dict[str, ModelProfile]:
     try:

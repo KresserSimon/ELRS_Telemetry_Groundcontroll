@@ -159,6 +159,7 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
         layers: styleLayers
       }
     });
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
     map.on('load', function () { setupDroneLayers(); });
   }
 
@@ -299,6 +300,7 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     initRouteEvents();
     initHeatLayers();
     initNfzLayers();
+    initGeofenceLayers();
     dronelayersReady = true;
   }
 
@@ -444,6 +446,53 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     map.on('mouseleave', 'nfz-fill', function () {
       map.getCanvas().style.cursor = '';
       if (nfzPopup) { nfzPopup.remove(); }
+    });
+  }
+
+  // ---------------------------------------------------- own geofence ring
+  //
+  // Deliberately a separate source/layer from the NFZ zones above, not a
+  // synthetic no-fly zone: this is the pilot's own configured boundary
+  // (dashed line, not a filled restricted area), independently toggleable
+  // from imported NFZ zones - see docs/feature_plan.md.
+
+  var geofenceGeoJson = { type: 'FeatureCollection', features: [] };
+  var geofenceVisible = true;
+
+  function updateGeofenceSource() {
+    var source = map.getSource('geofence');
+    if (source) { source.setData(geofenceGeoJson); }
+  }
+
+  function setGeofence(lat, lon, radiusM) {
+    if (lat === null || lon === null || radiusM === null || radiusM === undefined) {
+      geofenceGeoJson = { type: 'FeatureCollection', features: [] };
+    } else {
+      var coords = metersCircleToPolygon(lat, lon, radiusM);
+      geofenceGeoJson = {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] } }]
+      };
+    }
+    if (mapReady) { updateGeofenceSource(); }
+  }
+
+  function clearGeofence() {
+    setGeofence(null, null, null);
+  }
+
+  function setGeofenceVisible(enabled) {
+    geofenceVisible = enabled;
+    if (!mapReady) return;
+    map.setLayoutProperty('geofence-line', 'visibility', enabled ? 'visible' : 'none');
+  }
+
+  function initGeofenceLayers() {
+    map.addSource('geofence', { type: 'geojson', data: geofenceGeoJson });
+    map.addLayer({
+      id: 'geofence-line', type: 'line', source: 'geofence',
+      layout: { visibility: geofenceVisible ? 'visible' : 'none' },
+      paint: { 'line-color': '#3ba7ff', 'line-width': 2, 'line-dasharray': [2, 2] }
     });
   }
 

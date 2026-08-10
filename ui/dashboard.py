@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from core import geo, i18n
 from core.dashboard_config import load_dashboard_layout, load_visible_fields
+from core.display_info import DASHBOARD_SCALE_LARGE, DASHBOARD_SCALE_MEDIUM, DASHBOARD_SCALE_SMALL
 from core.telemetry_state import TelemetryState
+from core.wind_estimate import estimate_wind_component
 from ui import icons
 
 _NA = "--"
@@ -33,32 +36,53 @@ CONNECTED_COLOR = "#39d98a"
 DISCONNECTED_COLOR = "#ff5f56"
 _MONO_FONT = "'Consolas', 'Courier New', monospace"
 
-_GROUP_QSS = f"""
-    QGroupBox {{
-        background-color: {GROUP_BG};
-        border: 1px solid {GROUP_BORDER};
-        border-top: 2px solid {ACCENT};
-        border-radius: 4px;
-        margin-top: 12px;
-        padding: 8px 6px 4px 6px;
-    }}
-    QGroupBox::title {{
-        subcontrol-origin: margin;
-        subcontrol-position: top left;
-        left: 8px;
-        top: -2px;
-        padding: 0 5px;
-        color: {ACCENT};
-        font-size: 9px;
-        font-weight: 700;
-        background-color: {PANEL_BG};
-    }}
-"""
+# Base (100%) sizes that every DASHBOARD_SCALES factor multiplies - see
+# Dashboard.set_scale(). Tuned on a 4K/200%-scaled dev display, which
+# turned out to look comfortably spaced there but visibly cramped at
+# 1080p/100% (same logical-pixel budget, much less physical screen) -
+# hence a real, persistable scale control rather than a single fixed size.
+_BASE_CAPTION_FONT_PX = 9
+_BASE_VALUE_FONT_PX = 14
+_BASE_GROUP_TITLE_FONT_PX = 9
+_BASE_FIELD_MARGINS = (4, 2, 4, 2)
+
+DEFAULT_DASHBOARD_SCALE = DASHBOARD_SCALE_MEDIUM
+
+
+def _scaled_px(base_px: int, scale: float) -> int:
+    return max(1, round(base_px * scale))
+
+
+def _group_qss(scale: float) -> str:
+    title_font = _scaled_px(_BASE_GROUP_TITLE_FONT_PX, scale)
+    return f"""
+        QGroupBox {{
+            background-color: {GROUP_BG};
+            border: 1px solid {GROUP_BORDER};
+            border-top: 2px solid {ACCENT};
+            border-radius: 4px;
+            margin-top: 12px;
+            padding: 8px 6px 4px 6px;
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 8px;
+            top: -2px;
+            padding: 0 5px;
+            color: {ACCENT};
+            font-size: {title_font}px;
+            font-weight: 700;
+            background-color: {PANEL_BG};
+        }}
+    """
 
 
 def _value_label() -> QLabel:
     lbl = QLabel(_NA)
-    lbl.setStyleSheet(f"color: {VALUE_COLOR}; font-family: {_MONO_FONT}; font-weight: 700; font-size: 14px;")
+    lbl.setStyleSheet(
+        f"color: {VALUE_COLOR}; font-family: {_MONO_FONT}; font-weight: 700; font-size: {_BASE_VALUE_FONT_PX}px;"
+    )
     return lbl
 
 
@@ -73,20 +97,45 @@ class _Field(QWidget):
     def __init__(self, caption_key: str) -> None:
         super().__init__()
         self.caption_key = caption_key
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(0)
+        self._scale = 1.0
+        self._value_color: Optional[str] = None
+        self._layout = QVBoxLayout(self)
+        self._layout.setSpacing(0)
         self.caption_label = QLabel(i18n.tr(caption_key))
-        self.caption_label.setStyleSheet(f"color: {CAPTION_COLOR}; font-size: 9px; font-weight: 600;")
         self.value = _value_label()
-        layout.addWidget(self.caption_label)
-        layout.addWidget(self.value)
+        self._layout.addWidget(self.caption_label)
+        self._layout.addWidget(self.value)
+        self._apply_scale()
 
     def set_text(self, text: str) -> None:
         self.value.setText(text)
 
+    def set_color(self, color: Optional[str] = None) -> None:
+        # Used by the energy-budget reserve ampel - None restores the
+        # normal value color instead of leaving a stale warning color
+        # behind once the level improves back to "n/v"/green.
+        self._value_color = color
+        self._apply_scale()
+
     def retranslate(self) -> None:
         self.caption_label.setText(i18n.tr(self.caption_key))
+
+    def set_scale(self, scale: float) -> None:
+        self._scale = scale
+        self._apply_scale()
+
+    def _apply_scale(self) -> None:
+        margins = tuple(_scaled_px(m, self._scale) if m else 0 for m in _BASE_FIELD_MARGINS)
+        self._layout.setContentsMargins(*margins)
+        caption_font = _scaled_px(_BASE_CAPTION_FONT_PX, self._scale)
+        self.caption_label.setStyleSheet(
+            f"color: {CAPTION_COLOR}; font-size: {caption_font}px; font-weight: 600;"
+        )
+        value_font = _scaled_px(_BASE_VALUE_FONT_PX, self._scale)
+        self.value.setStyleSheet(
+            f"color: {self._value_color or VALUE_COLOR}; font-family: {_MONO_FONT}; "
+            f"font-weight: 700; font-size: {value_font}px;"
+        )
 
     def set_centered(self, centered: bool) -> None:
         # Left-aligned reads fine in a wide horizontal row, but in a narrow
@@ -116,15 +165,22 @@ class Dashboard(QWidget):
     # Picking the "+ Neues Modell anlegen" entry - MainWindow opens the
     # model-profile dialog's create-new flow in response.
     new_model_profile_requested = pyqtSignal()
+    # The small edit button next to the dropdown, for the currently
+    # selected profile - MainWindow opens the direct parameter editor
+    # (see docs/feature_plan.md's "Erweiterter Modell-Editor").
+    edit_model_profile_requested = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"Dashboard {{ background-color: {PANEL_BG}; }}" + _GROUP_QSS)
+        self._scale = DEFAULT_DASHBOARD_SCALE
+        self.setStyleSheet(f"Dashboard {{ background-color: {PANEL_BG}; }}" + _group_qss(self._scale))
         self._fields: list[_Field] = []
         self._boxes_by_key: Dict[str, QGroupBox] = {}
         self._fields_by_box: dict = {}
         self._icon_by_box: dict = {}
+        self._static_icon_base_pixmaps: Dict[QGroupBox, QPixmap] = {}
+        self._dynamic_icon_labels: List[QLabel] = []
         self._connected = False
         self._visible_fields: set = set()
         self._group_order: List[str] = []
@@ -153,11 +209,18 @@ class Dashboard(QWidget):
         self._model_combo.addItem("", "")
         self._last_selected_profile_name = ""
         self._model_combo.activated.connect(self._on_model_combo_activated)
+        self._model_edit_btn = QPushButton("✎")  # pencil - direct edit, no menu detour
+        self._model_edit_btn.setFixedWidth(24)
+        self._model_edit_btn.setEnabled(False)
+        self._model_edit_btn.clicked.connect(
+            lambda: self.edit_model_profile_requested.emit(self.current_model_profile_name())
+        )
         model_row = QHBoxLayout()
         model_row.setContentsMargins(0, 0, 0, 0)
         model_row.setSpacing(6)
         model_row.addWidget(self._model_label)
         model_row.addWidget(self._model_combo, 1)
+        model_row.addWidget(self._model_edit_btn)
         self._model_row_widget = QWidget()
         self._model_row_widget.setLayout(model_row)
 
@@ -199,6 +262,7 @@ class Dashboard(QWidget):
         self.snr = _Field("dash_snr")
         self.tx_power = _Field("dash_tx_power")
         self.link_icon_label = _icon_label(icons.signal_icon(-1))
+        self._dynamic_icon_labels.append(self.link_icon_label)
         self._group("dash_link", [self.rssi, self.lq, self.snr, self.tx_power], icon_label=self.link_icon_label)
 
         self.voltage = _Field("dash_voltage")
@@ -207,6 +271,7 @@ class Dashboard(QWidget):
         self.battery_current = _Field("dash_battery_current")
         self.battery_capacity_used = _Field("dash_battery_capacity_used")
         self.battery_icon_label = _icon_label(icons.battery_icon(None))
+        self._dynamic_icon_labels.append(self.battery_icon_label)
         self._group(
             "dash_battery",
             [self.voltage, self.remaining, self.min_cell, self.battery_current, self.battery_capacity_used],
@@ -223,13 +288,37 @@ class Dashboard(QWidget):
         self.distance_home = _Field("dash_distance_home")
         self.bearing_home = _Field("dash_bearing_home")
         self.flight_timer = _Field("dash_flight_timer")
+        # Energy-budget fields live in this same group rather than a new one
+        # of their own - they're conceptually part of "can I still get
+        # home" alongside distance/bearing, and a whole extra group box (own
+        # icon, border, padding) per-column measurably inflates the
+        # dashboard's minimum height in the common 2-column docked layout,
+        # which can force the whole window open larger than intended on a
+        # fresh install (see docs/feature_plan.md's P1 rollout notes).
+        self.energy_mah_for_home = _Field("dash_energy_mah_home")
+        self.energy_reserve = _Field("dash_energy_reserve")
+        # Same "don't add a whole new group box" reasoning as the energy
+        # fields just above - azimuth/elevation from the ground-station
+        # position (core/gs_position.py) is conceptually related to
+        # distance/bearing home, just from a different reference point.
+        self.gs_azimuth = _Field("dash_gs_azimuth")
+        self.gs_elevation = _Field("dash_gs_elevation")
+        # Same "don't add a whole new group box" reasoning - wind is
+        # derived straight from groundspeed (see core/wind_estimate.py),
+        # so it belongs right next to it rather than in its own group.
+        self.wind = _Field("dash_wind")
         self._group(
             "dash_longrange",
-            [self.groundspeed, self.distance_home, self.bearing_home, self.flight_timer],
+            [
+                self.groundspeed, self.distance_home, self.bearing_home, self.flight_timer,
+                self.energy_mah_for_home, self.energy_reserve,
+                self.gs_azimuth, self.gs_elevation, self.wind,
+            ],
             icons.compass_icon(),
         )
 
         self.conn_icon_label = _icon_label(icons.status_led_icon(False))
+        self._dynamic_icon_labels.append(self.conn_icon_label)
         self.conn_text = QLabel()
         conn_row = QHBoxLayout()
         conn_row.setSpacing(6)
@@ -255,6 +344,16 @@ class Dashboard(QWidget):
         self.retranslate()
 
         saved = load_visible_fields()
+        # A saved set that shares zero keys with today's actual fields
+        # (stale config from a much older version whose field keys were
+        # renamed/removed since, or a config file carried over from a
+        # different install) must not silently hide every single field -
+        # every group box would still render (title + icon) but with a
+        # visibly empty body, which looks like a rendering bug rather than
+        # a settings problem. Fall back to "show everything" instead,
+        # exactly like a genuinely missing/unreadable config file already does.
+        if saved is not None and not (saved & self.all_field_keys()):
+            saved = None
         self.apply_field_visibility(saved if saved is not None else self.all_field_keys())
 
         i18n.on_language_changed(self.retranslate)
@@ -265,6 +364,11 @@ class Dashboard(QWidget):
         layout = QHBoxLayout(box)
         layout.setSpacing(10)
         if icon_label is None and icon_pixmap is not None:
+            # Static icon (never changes after construction, unlike the
+            # link/battery/connection ones) - keep the original base-size
+            # pixmap so set_scale() can re-render it sharp at any factor
+            # instead of repeatedly rescaling an already-scaled copy.
+            self._static_icon_base_pixmaps[box] = icon_pixmap
             icon_label = _icon_label(icon_pixmap)
         if icon_label is not None:
             layout.addWidget(icon_label)
@@ -373,6 +477,45 @@ class Dashboard(QWidget):
         for f in self._fields:
             f.setMinimumWidth(uniform_width)
 
+    def scale(self) -> float:
+        return self._scale
+
+    def set_scale(self, factor: float) -> None:
+        """Scales font sizes, field margins, group-box title text and
+        every icon by `factor` (see DASHBOARD_SCALE_SMALL/MEDIUM/LARGE) -
+        built after a real report that the dashboard, tuned on a 4K/200%
+        dev display, looked visibly cramped on a 1920x1080/100% laptop."""
+        self._scale = factor
+        self.setStyleSheet(f"Dashboard {{ background-color: {PANEL_BG}; }}" + _group_qss(factor))
+        for f in self._fields:
+            f.set_scale(factor)
+        self._apply_uniform_field_width()
+
+        icon_size = _scaled_px(icons.SIZE, factor)
+        for box, base_pixmap in self._static_icon_base_pixmaps.items():
+            label = self._icon_by_box.get(box)
+            if label is not None:
+                self._set_icon_pixmap(label, base_pixmap, icon_size)
+        for label in self._dynamic_icon_labels:
+            # No cached base pixmap for these (content depends on live
+            # telemetry/connection state) - rescale the current pixmap
+            # in place. In practice this is rarely more than one
+            # generation removed from a fresh icons.xxx_icon() render,
+            # since update_state()/set_connection_status() run every time
+            # telemetry ticks or the connection changes.
+            current = label.pixmap()
+            if current is not None and not current.isNull():
+                self._set_icon_pixmap(label, current, icon_size)
+
+    @staticmethod
+    def _set_icon_pixmap(label: QLabel, pixmap: QPixmap, size: int) -> None:
+        if pixmap.width() != size:
+            pixmap = pixmap.scaled(
+                size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+        label.setPixmap(pixmap)
+        label.setFixedSize(size, size)
+
     def group_order(self) -> List[str]:
         return list(self._group_order)
 
@@ -455,8 +598,10 @@ class Dashboard(QWidget):
             # the model-creation dialog in response.
             self.set_current_model_profile_name(self._last_selected_profile_name)
             self.new_model_profile_requested.emit()
-        elif name:
-            self.model_profile_selected.emit(name)
+        else:
+            self._model_edit_btn.setEnabled(bool(name))
+            if name:
+                self.model_profile_selected.emit(name)
 
     def set_model_profile_names(self, names: List[str]) -> None:
         """Repopulate the dropdown (e.g. after a profile was saved/deleted
@@ -480,12 +625,20 @@ class Dashboard(QWidget):
         self._last_selected_profile_name = name
         index = self._model_combo.findData(name)
         self._model_combo.setCurrentIndex(index if index >= 0 else 0)
+        self._model_edit_btn.setEnabled(bool(name))
 
     # ------------------------------------------------------------- session
 
     def reset_session(self) -> None:
         self._home = None
         self._flight_start = None
+
+    def home_position(self):
+        """(lat, lon) of the current flight session's first GPS fix, or
+        None before any fix has arrived - the same reference "Entfernung/
+        Peilung Heim" above uses, exposed for other features (geofence,
+        energy budget) that need the identical flight-start point."""
+        return self._home
 
     def retranslate(self) -> None:
         for key, box in self._boxes_by_key.items():
@@ -510,7 +663,7 @@ class Dashboard(QWidget):
         self.tx_power.set_text(str(state.tx_power) if state.tx_power is not None else _NA)
 
         link_level = -1 if state.link_quality is None else max(0, min(4, math.ceil(state.link_quality / 25)))
-        self.link_icon_label.setPixmap(icons.signal_icon(link_level))
+        self._set_icon_pixmap(self.link_icon_label, icons.signal_icon(link_level), _scaled_px(icons.SIZE, self._scale))
 
         self.voltage.set_text(f"{state.battery_voltage:.2f}" if state.battery_voltage is not None else _NA)
         self.remaining.set_text(str(state.battery_remaining) if state.battery_remaining is not None else _NA)
@@ -519,7 +672,9 @@ class Dashboard(QWidget):
         self.battery_capacity_used.set_text(
             f"{state.battery_capacity_used:.0f}" if state.battery_capacity_used is not None else _NA
         )
-        self.battery_icon_label.setPixmap(icons.battery_icon(state.battery_remaining))
+        self._set_icon_pixmap(
+            self.battery_icon_label, icons.battery_icon(state.battery_remaining), _scaled_px(icons.SIZE, self._scale)
+        )
 
         self.vario.set_text(f"{state.vario:+.1f}" if state.vario is not None else _NA)
         self.baro_alt.set_text(f"{state.baro_altitude:.1f}" if state.baro_altitude is not None else _NA)
@@ -527,6 +682,8 @@ class Dashboard(QWidget):
         self.temperature.set_text(f"{state.temperature:.1f}" if state.temperature is not None else _NA)
 
         self.groundspeed.set_text(f"{state.groundspeed * 3.6:.1f}" if state.groundspeed is not None else _NA)
+        wind = estimate_wind_component(state.groundspeed, state.airspeed)
+        self.wind.set_text(f"{wind * 3.6:+.1f}" if wind is not None else _NA)
 
         if state.has_gps_fix():
             if self._home is None:
@@ -548,9 +705,33 @@ class Dashboard(QWidget):
 
         self.set_connection_status(state.connected)
 
+    # Reserve-ampel colors match the map's linkQualityColor() heatmap
+    # palette (ui/map_template.py) for a consistent green/yellow/red vibe
+    # across the app.
+    _ENERGY_LEVEL_COLORS = {"green": "#2ecc71", "yellow": "#f1c40f", "red": "#e74c3c"}
+
+    def update_energy_budget(self, result) -> None:
+        if result.level is None or result.mah_for_home is None:
+            self.energy_mah_for_home.set_text(_NA)
+            self.energy_reserve.set_text(_NA)
+            self.energy_reserve.set_color(None)
+            return
+
+        self.energy_mah_for_home.set_text(f"{result.mah_for_home:.0f}")
+        if result.reserve_pct is None:
+            self.energy_reserve.set_text(_NA)
+            self.energy_reserve.set_color(None)
+        else:
+            self.energy_reserve.set_text(f"{result.reserve_pct:.0f}%")
+            self.energy_reserve.set_color(self._ENERGY_LEVEL_COLORS.get(result.level))
+
+    def update_gs_azimuth_elevation(self, azimuth_deg, elevation_deg) -> None:
+        self.gs_azimuth.set_text(f"{azimuth_deg:.0f}°" if azimuth_deg is not None else _NA)
+        self.gs_elevation.set_text(f"{elevation_deg:+.0f}°" if elevation_deg is not None else _NA)
+
     def set_connection_status(self, connected: bool) -> None:
         self._connected = connected
-        self.conn_icon_label.setPixmap(icons.status_led_icon(connected))
+        self._set_icon_pixmap(self.conn_icon_label, icons.status_led_icon(connected), _scaled_px(icons.SIZE, self._scale))
         color = CONNECTED_COLOR if connected else DISCONNECTED_COLOR
         self.conn_text.setStyleSheet(f"color: {color}; font-family: {_MONO_FONT}; font-weight: 700; font-size: 13px;")
         self.conn_text.setText(i18n.tr("dash_connected" if connected else "dash_disconnected"))

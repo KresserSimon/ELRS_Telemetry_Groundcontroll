@@ -10,8 +10,11 @@ directly into the PC via USB, outputting MAVLink on its USB-serial port.
 from __future__ import annotations
 
 import math
+import queue
 import time
+from typing import Callable
 
+from PyQt6.QtCore import pyqtSignal
 from pymavlink import mavutil
 
 from core.telemetry_state import TelemetryState
@@ -22,6 +25,10 @@ MAVLINK_SERIAL_DEFAULT_BAUD = 57600
 
 
 class MAVLinkWorker(TelemetryWorker):
+    status_text_received = pyqtSignal(int, str)  # severity (MAV_SEVERITY 0-7), text
+    mission_message_received = pyqtSignal(object)  # raw pymavlink MISSION_* message
+    command_ack_received = pyqtSignal(int, int)  # (command id, MAV_RESULT)
+
     def __init__(
         self,
         connection_type: str = "udp",
@@ -40,6 +47,40 @@ class MAVLinkWorker(TelemetryWorker):
         self._baud = baud
         self._state = TelemetryState(source="mavlink")
 
+        # The mavutil connection is only ever touched from this worker's
+        # own thread (set in run(), cleared when it exits) - never call
+        # .mav.xxx_send(...) on `connection` directly from the GUI thread,
+        # use enqueue_send() instead. Exposed (read-only) for future
+        # callers - mission upload/download, RTH/mode-change commands (see
+        # docs/feature_plan.md's "MAVLink-Rueckkanal") - that need to read
+        # connection details (e.g. target_system) while building a message.
+        self._conn = None
+        self._send_queue: "queue.Queue[Callable[[], None]]" = queue.Queue()
+
+    @property
+    def connection(self):
+        return self._conn
+
+    def enqueue_send(self, send_fn: Callable[[], None]) -> None:
+        """Thread-safe from any thread: queue a zero-arg callable (typically
+        `lambda: worker.connection.mav.xxx_send(...)`) to run on this
+        worker's own thread during its next receive-loop iteration - the
+        only thread allowed to touch the underlying mavutil connection.
+        Silently queued even if not yet connected; run()'s loop only
+        drains it once `connection` is set."""
+        self._send_queue.put(send_fn)
+
+    def _drain_send_queue(self) -> None:
+        while True:
+            try:
+                send_fn = self._send_queue.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                send_fn()
+            except Exception as exc:
+                self.error_occurred.emit(f"MAVLink-Senden fehlgeschlagen: {exc}")
+
     def _connection_string(self) -> str:
         if self._connection_type == "serial":
             return self._serial_port
@@ -50,9 +91,9 @@ class MAVLinkWorker(TelemetryWorker):
     def run(self) -> None:
         try:
             if self._connection_type == "serial":
-                conn = mavutil.mavlink_connection(self._connection_string(), baud=self._baud)
+                self._conn = mavutil.mavlink_connection(self._connection_string(), baud=self._baud)
             else:
-                conn = mavutil.mavlink_connection(self._connection_string())
+                self._conn = mavutil.mavlink_connection(self._connection_string())
         except Exception as exc:
             self.error_occurred.emit(f"MAVLink-Verbindung fehlgeschlagen: {exc}")
             return
@@ -61,8 +102,9 @@ class MAVLinkWorker(TelemetryWorker):
         was_connected = False
 
         while self._running:
+            self._drain_send_queue()
             try:
-                msg = conn.recv_match(blocking=True, timeout=1.0)
+                msg = self._conn.recv_match(blocking=True, timeout=1.0)
             except Exception as exc:
                 self.error_occurred.emit(f"MAVLink Empfangsfehler: {exc}")
                 msg = None
@@ -91,9 +133,10 @@ class MAVLinkWorker(TelemetryWorker):
                 self.connection_changed.emit(False)
 
         try:
-            conn.close()
+            self._conn.close()
         except Exception:
             pass
+        self._conn = None
 
     def _apply_message(self, msg) -> None:
         msg_type = msg.get_type()
@@ -154,3 +197,36 @@ class MAVLinkWorker(TelemetryWorker):
         elif msg_type == "VFR_HUD":
             s.vario = msg.climb
             s.groundspeed = msg.groundspeed
+            # Only meaningful with a real airspeed sensor (fixed-wing).
+            # Firmware without one (most multirotors) mirrors groundspeed
+            # into this field, which core/wind_estimate.py's caller-side
+            # "same value" check treats as "no real airspeed data".
+            s.airspeed = msg.airspeed
+
+        elif msg_type == "STATUSTEXT":
+            # An event (prearm/EKF/mode-change messages, etc.), not a
+            # persistent field - deliberately NOT written into `s`/
+            # TelemetryState, which only holds current-value telemetry.
+            # Emitted as its own signal for a future scrollable console
+            # (see docs/feature_plan.md's "MAVLink-STATUSTEXT-Konsole");
+            # no listener is wired up to it yet.
+            text = msg.text
+            if isinstance(text, bytes):
+                text = text.decode("utf-8", errors="replace")
+            self.status_text_received.emit(msg.severity, text.rstrip("\x00"))
+
+        elif msg_type in (
+            "MISSION_COUNT", "MISSION_ITEM_INT", "MISSION_ITEM",
+            "MISSION_REQUEST_INT", "MISSION_REQUEST", "MISSION_ACK",
+        ):
+            # Mission upload/download protocol messages, not telemetry
+            # fields - forwarded to whichever MissionUploadSession/
+            # MissionDownloadSession is currently active, if any (see
+            # telemetry/mavlink_mission.py).
+            self.mission_message_received.emit(msg)
+
+        elif msg_type == "COMMAND_ACK":
+            # Acknowledges a COMMAND_LONG we sent (RTH/mode-change) - lets
+            # the UI confirm the flight controller actually accepted it,
+            # not just that we managed to send it.
+            self.command_ack_received.emit(msg.command, msg.result)

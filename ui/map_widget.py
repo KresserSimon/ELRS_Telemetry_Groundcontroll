@@ -8,6 +8,7 @@ these coexist rather than one replacing the other.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -18,6 +19,8 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from core import i18n
 from core.nfz import NoFlyZone
+from core.pmtiles_extract import FALLBACK_REGION_FILE, KNOWN_REGIONS
+from core.resources import resource_path
 from core.route import Waypoint
 from ui.map_template import get_map_html
 from ui.maplibre_template import get_maplibre_html
@@ -28,28 +31,56 @@ from ui.tile_cache_handler import TileCacheSchemeHandler
 
 OVERLAY_MARGIN = 10
 
-# Real region extracts (gitignored, dev-only - never shipped in the .exe;
-# see the migration plan) under dev_data/. No user-facing "pick your region"
-# flow yet - _select_pmtiles_region() picks automatically based on the
-# drone's home position, using each file's real bounding box (read directly
-# from its own header via the `pmtiles show` CLI, not guessed).
-_DEV_DATA_DIR = Path(__file__).resolve().parent.parent / "dev_data" / "pmtiles"
-# (filename, lon_min, lat_min, lon_max, lat_max)
-_REGIONS = (
-    ("germany.pmtiles", 5.87, 47.27, 15.04, 55.06),
-    ("austria.pmtiles", 9.53, 46.37, 17.16, 49.02),
-    ("switzerland.pmtiles", 5.96, 45.82, 10.49, 47.81),
-    ("italy.pmtiles", 6.63, 35.49, 18.58, 47.10),
-)
-_FALLBACK_REGION_FILE = "germany.pmtiles"  # matches the demo default (Munich)
+# Real region extracts are multi-GB (see the migration plan) and are never
+# bundled into the .exe by the build itself - either downloaded in-app
+# (ui/pmtiles_download_dialog.py, via core/pmtiles_extract.py) or placed
+# manually. _select_pmtiles_region() picks automatically based on the
+# drone's home position, using each file's real bounding box (read
+# directly from its own header via the `pmtiles show` CLI, not guessed).
+def pmtiles_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        # A packaged .exe ships no region files at all (see the migration
+        # plan's size analysis) - point at a user-managed folder instead,
+        # same ~/.elrs_ground_station/ convention as tile_cache/ and
+        # gs_position.json. Users who want the MapLibre renderer in the
+        # packaged app copy their own *.pmtiles region extracts here.
+        # Deliberately NOT core/resources.py's resource_path() (which
+        # resolves into the frozen bundle itself, i.e. read-only/temporary
+        # territory) - this is real, permanent user data, not a bundled
+        # asset.
+        return Path.home() / ".elrs_ground_station" / "pmtiles"
+    # Running from source: the real region extracts already checked out
+    # under dev_data/ (gitignored, dev-only - see the migration plan).
+    return Path(__file__).resolve().parent.parent / "dev_data" / "pmtiles"
+
+
+def _pmtiles_search_dirs() -> List[Path]:
+    """Every directory checked, in order, for a *.pmtiles region file.
+    pmtiles_dir() (the user-writable folder) is both where the in-app
+    download dialog writes new regions to AND where anyone can manually
+    drop their own *.pmtiles files - but some people instead follow this
+    app's existing assets/ bundling convention (icons/logo) and place
+    files under assets/pmtiles next to the exe, which resource_path()
+    resolves correctly whether frozen or run from source - so that's
+    checked too, as a fallback location, not the primary one (new
+    downloads still always go to pmtiles_dir())."""
+    primary = pmtiles_dir()
+    bundled = resource_path("assets", "pmtiles")
+    return [primary] if bundled == primary else [primary, bundled]
 
 
 def _select_pmtiles_region(lat: Optional[float], lon: Optional[float]) -> Path:
+    filename = FALLBACK_REGION_FILE
     if lat is not None and lon is not None:
-        for filename, lon_min, lat_min, lon_max, lat_max in _REGIONS:
-            if lon_min <= lon <= lon_max and lat_min <= lat <= lat_max:
-                return _DEV_DATA_DIR / filename
-    return _DEV_DATA_DIR / _FALLBACK_REGION_FILE
+        for region in KNOWN_REGIONS:
+            if region.min_lon <= lon <= region.max_lon and region.min_lat <= lat <= region.max_lat:
+                filename = region.filename
+                break
+    for directory in _pmtiles_search_dirs():
+        candidate = directory / filename
+        if candidate.is_file():
+            return candidate
+    return pmtiles_dir() / filename  # missing - points at the primary (writable/download) location
 
 
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -92,6 +123,7 @@ class MapWidget(QWebEngineView):
         self._overlays: list = []  # [[widget, corner], ...]
         self._pending_position: Optional[tuple] = None
         self._renderer = renderer if renderer == "maplibre" else "leaflet"
+        self._pmtiles_region_missing = False
 
         self._profile = _get_shared_profile()
         self.setPage(QWebEnginePage(self._profile, self))
@@ -150,6 +182,8 @@ class MapWidget(QWebEngineView):
         region_path = _select_pmtiles_region(home_lat, home_lon)
         if region_path.is_file():
             self.pmtiles_bridge.open(region_path)
+        else:
+            self._pmtiles_region_missing = True
         html_kwargs = {
             "label_waypoint": i18n.tr("mapctx_waypoint"),
             "label_start": i18n.tr("mapctx_start"),
@@ -162,6 +196,12 @@ class MapWidget(QWebEngineView):
             html_kwargs["center_lat"] = home_lat
             html_kwargs["center_lon"] = home_lon
         self.setHtml(get_maplibre_html(**html_kwargs))
+
+    def pmtiles_region_missing(self) -> bool:
+        """True only when the MapLibre renderer is active and no matching
+        *.pmtiles region file was found at startup (see pmtiles_dir()) -
+        the map is showing a blank/black base layer, not a crash."""
+        return self._pmtiles_region_missing
 
     def add_overlay(self, widget, corner: str = "top-right") -> None:
         widget.setParent(self)
@@ -214,6 +254,17 @@ class MapWidget(QWebEngineView):
                 max_y = max(OVERLAY_MARGIN, self.height() - h - OVERLAY_MARGIN)
                 x = min(max(widget.x(), OVERLAY_MARGIN), max_x)
                 y = min(max(widget.y(), OVERLAY_MARGIN), max_y)
+                widget.move(x, y)
+                widget.raise_()
+                continue
+
+            if corner == "center":
+                # Not a stacking corner - always dead-center regardless of
+                # other overlays, for anything meant to actively grab
+                # attention (e.g. the warning banner) rather than sit
+                # unobtrusively out of the way.
+                x = max(OVERLAY_MARGIN, (self.width() - w) // 2)
+                y = max(OVERLAY_MARGIN, (self.height() - h) // 2)
                 widget.move(x, y)
                 widget.raise_()
                 continue
@@ -302,3 +353,12 @@ class MapWidget(QWebEngineView):
 
     def set_nfz_visible(self, enabled: bool) -> None:
         self.page().runJavaScript(f"setNoFlyZonesVisible({'true' if enabled else 'false'});")
+
+    def set_geofence(self, lat: float, lon: float, radius_m: float) -> None:
+        self.page().runJavaScript(f"setGeofence({lat}, {lon}, {radius_m});")
+
+    def clear_geofence(self) -> None:
+        self.page().runJavaScript("clearGeofence();")
+
+    def set_geofence_visible(self, enabled: bool) -> None:
+        self.page().runJavaScript(f"setGeofenceVisible({'true' if enabled else 'false'});")

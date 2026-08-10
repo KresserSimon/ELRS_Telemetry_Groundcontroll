@@ -19,7 +19,7 @@ ALL_FIELDS = (
     "roll", "pitch", "flight_mode",
     "battery_voltage", "battery_remaining", "battery_current", "battery_capacity_used", "cell_voltages",
     "rssi", "link_quality", "snr", "tx_power",
-    "vario", "baro_altitude", "rpm", "temperature", "groundspeed",
+    "vario", "baro_altitude", "rpm", "temperature", "groundspeed", "airspeed",
     "connected",
 )
 DEFAULT_FIELDS = ALL_FIELDS

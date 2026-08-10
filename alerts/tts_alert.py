@@ -90,6 +90,12 @@ class BatteryAlertMonitor:
         self._level = LEVEL_NONE
         self._last_announce = 0.0
 
+    def level(self) -> str:
+        """LEVEL_NONE/LEVEL_LOW/LEVEL_CRITICAL as of the most recent check()
+        - for callers (e.g. a visual warning banner) that need to know
+        whether a warning is currently active, not just hear it spoken."""
+        return self._level
+
     def configure(
         self,
         cells: int,

@@ -43,6 +43,7 @@ FIELD_LABEL_KEYS = {
     "rpm": "logfield_rpm",
     "temperature": "logfield_temperature",
     "groundspeed": "logfield_groundspeed",
+    "airspeed": "logfield_airspeed",
     "connected": "logfield_connected",
 }
 
