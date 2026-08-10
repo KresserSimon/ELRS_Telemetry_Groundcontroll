@@ -123,6 +123,24 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     const source = new pmtiles.PMTiles(new QtSource(pmtilesBridge, key));
     protocol.add(source);
 
+    var styleLayers = basemaps.layers("protomaps", basemaps.namedFlavor("light"), { lang: "en" });
+    // Road/water labels use symbol-placement:'line' (text follows the line
+    // direction) with no explicit text-rotation-alignment, which defaults
+    // to rotating together with the map. That's fine for occasional,
+    // user-driven rotation, but this app's heading-up mode calls
+    // map.setBearing() continuously (up to 5Hz, once per drone update) -
+    // MapLibre's own "keep upright" correction can't keep up with bearing
+    // changing that often, so line-following labels intermittently render
+    // upside-down/mirrored mid-rotation. Forcing every symbol layer to
+    // 'viewport' alignment trades "labels follow road direction" for
+    // "labels are always screen-upright and legible", the right call given
+    // how often the bearing actually changes here.
+    styleLayers.forEach(function (layer) {
+      if (layer.type === "symbol" && layer.layout && "text-field" in layer.layout) {
+        layer.layout["text-rotation-alignment"] = "viewport";
+      }
+    });
+
     map = new maplibregl.Map({
       container: "map",
       zoom: __ZOOM__,
@@ -138,7 +156,7 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
             attribution: "&copy; OpenStreetMap contributors"
           }
         },
-        layers: basemaps.layers("protomaps", basemaps.namedFlavor("light"), { lang: "en" })
+        layers: styleLayers
       }
     });
     map.on('load', function () { setupDroneLayers(); });
