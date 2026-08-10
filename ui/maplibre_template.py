@@ -1,10 +1,12 @@
 """Experimental, parallel vector-tile map page (MapLibre GL JS + PMTiles),
 loaded instead of ui/map_template.py's Leaflet/raster page when the
 "MapLibre (Vektor, experimentell)" renderer is selected - see
-ui/map_widget.py for how the choice is made. Drone tracking, native
-map-bearing rotation, and route/waypoint editing (Stages 1-3 of the
-migration plan) are implemented; NFZ zones and the RSSI/LQ heatmap track
-(Stage 4) are still no-op stubs - see the bottom of the JS below.
+ui/map_widget.py for how the choice is made. Full feature parity with the
+Leaflet path (Stages 1-4 of the migration plan): drone tracking, native
+map-bearing rotation, route/waypoint editing, NFZ zones, and the RSSI/LQ
+heatmap track. Only base-layer switching (setBaseLayer) stays a no-op stub
+- MapLibre uses a single fixed vector style here, not multiple swappable
+raster layers.
 
 Tile data comes from a local .pmtiles file via ui/pmtiles_bridge.py's
 QWebChannel bridge (byte-range reads), not a URL scheme handler - the
@@ -60,6 +62,11 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
   }
   .route-context-menu button:hover { background: #2ecc71; color: #10151a; }
   .route-context-menu-sep { height: 1px; background: #3a4048; margin: 4px 0; }
+  .nfz-popup .maplibregl-popup-content {
+    background: rgba(18,22,28,0.92); color: #e8e8e8; font-size: 11px;
+    padding: 4px 8px; border-radius: 5px; box-shadow: none;
+  }
+  .nfz-popup .maplibregl-popup-tip { border-top-color: rgba(18,22,28,0.92); border-bottom-color: rgba(18,22,28,0.92); }
 </style>
 </head>
 <body>
@@ -272,15 +279,154 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     map.addLayer({ id: 'path-line', type: 'line', source: 'path', paint: { 'line-color': '#ff8000', 'line-width': 3 } });
     initCoordOverlayEvents();
     initRouteEvents();
+    initHeatLayers();
+    initNfzLayers();
     dronelayersReady = true;
   }
 
   function clearPath() {
     pathLatLngs = [];
     lastPathPoint = null;
-    if (mapReady) { updatePathSource(); }
+    heatFeatures = [];
+    lastHeatPoint = null;
+    if (mapReady) {
+      updatePathSource();
+      updateHeatSource();
+    }
     if (homeMarker) { homeMarker.remove(); homeMarker = null; }
     hasCentered = false;
+  }
+
+  // -------------------------------------------------------- RSSI/LQ heatmap
+  //
+  // A parallel colored-segment source alongside the always-on plain-orange
+  // path above - toggling heatmap mode just swaps which layer is visible
+  // (map.setLayoutProperty), so no track data is ever lost switching back
+  // and forth. Unlike map_template.py, which creates one *separate Leaflet
+  // layer per tracked point* (the unbounded-growth bug fixed earlier this
+  // session with a manual cap), this is a single GeoJSON source with a
+  // data-driven line-color expression - the exact "net win for the heatmap
+  // specifically" the migration plan called out for GeoJSON-backed layers.
+
+  var heatmapEnabled = false;
+  var heatFeatures = [];
+  var lastHeatPoint = null;  // [lat, lon]
+
+  function linkQualityColor(lq) {
+    if (lq === null || lq === undefined) return '#888888';
+    if (lq >= 80) return '#2ecc71';
+    if (lq >= 50) return '#f1c40f';
+    return '#e74c3c';
+  }
+
+  function updateHeatSource() {
+    var source = map.getSource('heat');
+    if (source) { source.setData({ type: 'FeatureCollection', features: heatFeatures }); }
+  }
+
+  function initHeatLayers() {
+    map.addSource('heat', { type: 'geojson', data: { type: 'FeatureCollection', features: heatFeatures } });
+    map.addLayer({
+      id: 'heat-line', type: 'line', source: 'heat',
+      layout: { visibility: 'none' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 4 }
+    });
+  }
+
+  function setHeatmapEnabled(enabled) {
+    heatmapEnabled = enabled;
+    if (!mapReady) return;
+    map.setLayoutProperty('path-line', 'visibility', enabled ? 'none' : 'visible');
+    map.setLayoutProperty('heat-line', 'visibility', enabled ? 'visible' : 'none');
+    lastHeatPoint = enabled && pathLatLngs.length ? [pathLatLngs[pathLatLngs.length - 1][1], pathLatLngs[pathLatLngs.length - 1][0]] : null;
+  }
+
+  // -------------------------------------------------------------- no-fly zones
+
+  var nfzGeoJson = { type: 'FeatureCollection', features: [] };
+  var nfzVisible = true;
+  var nfzPopup = null;
+
+  function escapeHtml(text) {
+    var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(text).replace(/[&<>"']/g, function (c) { return map[c]; });
+  }
+
+  // MapLibre has no native "circle of N meters radius" primitive (a
+  // circle-layer's radius is in screen pixels, not real-world distance),
+  // so a plain equirectangular approximation turns each circular zone into
+  // a polygon - fine for a no-fly-zone boundary visualization, not meant
+  // to be geodesically exact.
+  function metersCircleToPolygon(lat, lon, radiusM, steps) {
+    steps = steps || 48;
+    var coords = [];
+    var latRad = lat * Math.PI / 180;
+    var mPerDegLat = 111320;
+    var mPerDegLon = 111320 * Math.cos(latRad) || 1e-6;
+    for (var i = 0; i <= steps; i++) {
+      var theta = (i / steps) * 2 * Math.PI;
+      coords.push([lon + (radiusM * Math.cos(theta)) / mPerDegLon, lat + (radiusM * Math.sin(theta)) / mPerDegLat]);
+    }
+    return coords;
+  }
+
+  function updateNfzSource() {
+    var source = map.getSource('nfz');
+    if (source) { source.setData(nfzGeoJson); }
+  }
+
+  function setNoFlyZones(zones) {
+    var features = zones.map(function (zone) {
+      var coords;
+      if (zone.kind === 'circle') {
+        coords = metersCircleToPolygon(zone.center[0], zone.center[1], zone.radius_m);
+      } else {
+        coords = zone.points.map(function (p) { return [p[1], p[0]]; });
+        var first = coords[0], last = coords[coords.length - 1];
+        if (first && last && (first[0] !== last[0] || first[1] !== last[1])) { coords.push(first); }
+      }
+      return { type: 'Feature', properties: { name: zone.name }, geometry: { type: 'Polygon', coordinates: [coords] } };
+    });
+    nfzGeoJson = { type: 'FeatureCollection', features: features };
+    if (mapReady) { updateNfzSource(); }
+  }
+
+  function setNoFlyZonesVisible(enabled) {
+    nfzVisible = enabled;
+    if (!mapReady) return;
+    var vis = enabled ? 'visible' : 'none';
+    map.setLayoutProperty('nfz-fill', 'visibility', vis);
+    map.setLayoutProperty('nfz-line', 'visibility', vis);
+  }
+
+  function initNfzLayers() {
+    map.addSource('nfz', { type: 'geojson', data: nfzGeoJson });
+    map.addLayer({
+      id: 'nfz-fill', type: 'fill', source: 'nfz',
+      layout: { visibility: nfzVisible ? 'visible' : 'none' },
+      paint: { 'fill-color': '#e74c3c', 'fill-opacity': 0.2 }
+    });
+    map.addLayer({
+      id: 'nfz-line', type: 'line', source: 'nfz',
+      layout: { visibility: nfzVisible ? 'visible' : 'none' },
+      paint: { 'line-color': '#e74c3c', 'line-width': 2 }
+    });
+    // MapLibre's own popups are DOM elements that stay screen-upright
+    // regardless of map bearing, same as markers - unlike
+    // map_template.py's NFZ tooltip, no registerCounterRotated() equivalent
+    // is needed here at all.
+    map.on('mousemove', 'nfz-fill', function (e) {
+      map.getCanvas().style.cursor = 'pointer';
+      var name = e.features[0].properties.name;
+      if (!nfzPopup) {
+        nfzPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'nfz-popup' });
+      }
+      nfzPopup.setLngLat(e.lngLat).setHTML('<span>' + escapeHtml(name) + '</span>').addTo(map);
+    });
+    map.on('mouseleave', 'nfz-fill', function () {
+      map.getCanvas().style.cursor = '';
+      if (nfzPopup) { nfzPopup.remove(); }
+    });
   }
 
   // --------------------------------------------------------- drone updates
@@ -299,6 +445,21 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
       }
       updatePathSource();
       lastPathPoint = latlng;
+    }
+
+    if (heatmapEnabled) {
+      if (lastHeatPoint !== null) {
+        heatFeatures.push({
+          type: 'Feature',
+          properties: { color: linkQualityColor(linkQuality === undefined ? null : linkQuality) },
+          geometry: { type: 'LineString', coordinates: [[lastHeatPoint[1], lastHeatPoint[0]], [lon, lat]] }
+        });
+        if (heatFeatures.length > MAX_PATH_POINTS) {
+          heatFeatures = heatFeatures.filter(function (_, i) { return i % 2 === 0; });
+        }
+        updateHeatSource();
+      }
+      lastHeatPoint = latlng;
     }
 
     if (droneMarker === null) {
@@ -525,15 +686,11 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     });
   }
 
-  // --------------------- not yet ported (Stage 4 of the migration plan) -
-  // NFZ zones and the RSSI/LQ heatmap track are not built yet, but both are
-  // already called unconditionally from ui/map_widget.py/main_window.py
-  // regardless of active renderer, so they need to exist as harmless
-  // no-ops for now rather than throwing ReferenceError.
+  // Base-layer switching (raster OSM/Satellite toggle) has no MapLibre
+  // equivalent yet - a single fixed vector style, not multiple swappable
+  // ones - genuinely out of scope for now, unlike setHeatmapEnabled/
+  // setNoFlyZones*/setRoute* above which are all now real implementations.
   function setBaseLayer(id) {}
-  function setHeatmapEnabled(enabled) {}
-  function setNoFlyZones(zones) {}
-  function setNoFlyZonesVisible(enabled) {}
 </script>
 </body>
 </html>
