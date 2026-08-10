@@ -52,7 +52,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--low-cell-voltage", type=float, default=3.6, help="Zellspannung fuer 'niedrig'-Warnung")
     parser.add_argument("--critical-cell-voltage", type=float, default=3.5, help="Zellspannung fuer 'kritisch'-Warnung")
 
-    parser.add_argument("--demo-center", default="48.1372,11.5756",
+    parser.add_argument("--demo-center", default="47.5028,9.7472",
                          help="Mittelpunkt der Demo-Flugbahn als 'lat,lon'")
 
     args = parser.parse_args(argv)
