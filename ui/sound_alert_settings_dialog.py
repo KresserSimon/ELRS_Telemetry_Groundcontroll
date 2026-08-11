@@ -24,7 +24,14 @@ from PyQt6.QtWidgets import (
 )
 
 from core import i18n
-from core.sound_alerts import WARNING_TYPES, get_sound_path, list_available_sounds, load_overrides, set_sound
+from core.sound_alerts import (
+    DEFAULT_SOUND_OVERRIDES,
+    WARNING_TYPES,
+    get_sound_path,
+    list_available_sounds,
+    load_overrides,
+    set_sound,
+)
 
 _COL_WARNING, _COL_SOUND, _COL_PLAY = range(3)
 
@@ -57,6 +64,15 @@ class SoundAlertSettingsDialog(QDialog):
             label_item.setFlags(label_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self._table.setItem(row, _COL_WARNING, label_item)
 
+            # A key absent from overrides falls back to the factory default
+            # sound for that warning (if any); a key present - even as ""
+            # for "explicitly Text-to-speech" - always wins over that
+            # default, matching core.sound_alerts.get_sound_path()'s logic.
+            if warning_type.key in overrides:
+                effective = overrides[warning_type.key]
+            else:
+                effective = DEFAULT_SOUND_OVERRIDES.get(warning_type.key, "")
+
             combo = QComboBox()
             combo.setEditable(True)
             combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -64,7 +80,7 @@ class SoundAlertSettingsDialog(QDialog):
             selected_index = 0
             for sound in self._sounds:
                 combo.addItem(sound.display_name, sound.relative_path)
-                if overrides.get(warning_type.key) == sound.relative_path:
+                if effective == sound.relative_path:
                     selected_index = combo.count() - 1
             combo.setCurrentIndex(selected_index)
             completer = QCompleter([combo.itemText(i) for i in range(combo.count())], combo)

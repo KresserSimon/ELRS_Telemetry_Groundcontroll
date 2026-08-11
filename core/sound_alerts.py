@@ -45,6 +45,16 @@ WARNING_TYPES: Tuple[WarningType, ...] = (
 
 _WARNING_KEYS = frozenset(w.key for w in WARNING_TYPES)
 
+# Factory defaults, chosen and confirmed by the user out of the bundled
+# EdgeTX pack - used whenever a warning has no entry yet in the user's own
+# overrides file. Warnings not listed here still default to plain TTS.
+DEFAULT_SOUND_OVERRIDES: Dict[str, str] = {
+    "tts_low": "SCRIPTS/YAAPU/lowbat.wav",
+    "tts_critical": "SCRIPTS/INAV/batcrt.wav",
+    "tts_energy_budget_low": "SCRIPTS/YAAPU/bat50.wav",
+    "tts_model_lost": "SYSTEM/telemok.wav",
+}
+
 
 @dataclass(frozen=True)
 class SoundAsset:
@@ -70,7 +80,14 @@ def get_sound_path(key: Optional[str]) -> Optional[Path]:
     if not key:
         return None
     overrides = load_overrides()
-    relative_path = overrides.get(key)
+    # A key present in overrides always wins, even as "" (the user
+    # explicitly picked "Text-to-speech (default)", overriding a factory
+    # default sound for that warning) - only a key absent entirely falls
+    # back to DEFAULT_SOUND_OVERRIDES.
+    if key in overrides:
+        relative_path = overrides[key]
+    else:
+        relative_path = DEFAULT_SOUND_OVERRIDES.get(key, "")
     if not relative_path:
         return None
     candidate = resource_path(*SOUNDS_DIR_PARTS, *relative_path.split("/"))
@@ -81,10 +98,7 @@ def set_sound(key: str, relative_path: Optional[str]) -> None:
     if key not in _WARNING_KEYS:
         return
     overrides = load_overrides()
-    if relative_path:
-        overrides[key] = relative_path
-    else:
-        overrides.pop(key, None)
+    overrides[key] = relative_path or ""
     _save_overrides(overrides)
 
 
