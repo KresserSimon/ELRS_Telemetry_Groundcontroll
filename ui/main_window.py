@@ -102,6 +102,7 @@ from ui.replay_transport_overlay import ReplayTransportOverlay
 from ui.route_editor_overlay import RouteEditorOverlay
 from ui.statustext_console import StatusTextConsole
 from ui.telemetry_variable_editor_dialog import TelemetryVariableEditorDialog
+from ui.sound_alert_settings_dialog import SoundAlertSettingsDialog
 from ui.warning_banner import WarningBanner
 from ui.track_overlay import TrackOverlay
 from ui.tracker_output_dialog import TrackerOutputDialog
@@ -366,6 +367,7 @@ class MainWindow(QMainWindow):
             )
 
         self._worker = None
+        self._pmtiles_dialog = None  # Optional[PMTilesDownloadDialog] - non-modal, kept alive while open/downloading
         self._demo_mode = bool(args.demo)
         self._plan_mode = False
         self._initial_show_handled = False
@@ -825,6 +827,10 @@ class MainWindow(QMainWindow):
         lost_model_settings_action = telemetry_menu.addAction("")
         self._i18n_actions.append((lost_model_settings_action, "menu_lost_model_settings"))
         lost_model_settings_action.triggered.connect(self._open_lost_model_settings)
+
+        sound_alert_settings_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((sound_alert_settings_action, "menu_sound_alert_settings"))
+        sound_alert_settings_action.triggered.connect(self._open_sound_alert_settings)
 
         telemetry_menu.addSeparator()
         tracker_output_action = telemetry_menu.addAction("")
@@ -1396,7 +1402,21 @@ class MainWindow(QMainWindow):
         )
 
     def _open_pmtiles_download_dialog(self) -> None:
-        PMTilesDownloadDialog(self).exec()
+        # Non-modal on purpose: a multi-region download can take minutes,
+        # and unlike a modal .exec() call this lets the rest of the app
+        # (map, telemetry, flying) stay fully usable while it runs in the
+        # background - the actual extraction already happens off the GUI
+        # thread via PMTilesDownloadWorker(QThread), only the dialog itself
+        # used to block interaction.
+        if self._pmtiles_dialog is None:
+            self._pmtiles_dialog = PMTilesDownloadDialog(self)
+            self._pmtiles_dialog.finished.connect(self._on_pmtiles_dialog_finished)
+        self._pmtiles_dialog.show()
+        self._pmtiles_dialog.raise_()
+        self._pmtiles_dialog.activateWindow()
+
+    def _on_pmtiles_dialog_finished(self, _result: int) -> None:
+        self._pmtiles_dialog = None
 
     def _open_tracker_output(self) -> None:
         dialog = TrackerOutputDialog(self._tracker_output_sender, self)
@@ -1405,6 +1425,9 @@ class MainWindow(QMainWindow):
     def _open_telemetry_variable_editor(self) -> None:
         dialog = TelemetryVariableEditorDialog(self._telemetry_catalog, self)
         dialog.exec()
+
+    def _open_sound_alert_settings(self) -> None:
+        SoundAlertSettingsDialog(self).exec()
 
     def _on_tracker_output_error(self, message: str) -> None:
         self.statusBar().showMessage(message, 8000)
@@ -2431,6 +2454,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         if self._worker is not None:
             self._worker.stop()
+        if self._pmtiles_dialog is not None:
+            self._pmtiles_dialog.close()
         self._flight_logger.stop()
         self._tts_worker.stop()
         self._tracker_output_sender.stop()
