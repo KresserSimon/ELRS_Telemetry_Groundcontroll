@@ -985,6 +985,48 @@ Muster, sondern die erste echte Öffnung der bisher statischen, fest
 verdrahteten Telemetrie-/Dashboard-Architektur für dynamisch entdeckte
 Felder.
 
+### P6: Warntöne aus dem EdgeTX-Soundpaket — umgesetzt
+
+**Nutzeranfrage (wörtlich):** "hier liegen noch alle in EDGETX verfügbaren
+Sounds. Bitte diese mit den Warnungen koppeln. Zusätzlich ein Menu
+erstellen um die Sounds für Warnungen zu ändern" (Verweis auf `assets/en/`,
+das komplette EdgeTX-Sprachpaket - Wurzelordner plus `SCRIPTS/` und
+`SYSTEM/`, ca. 730 `.wav`-Dateien, war schon vorher Teil des Repos).
+
+**Umsetzungsstand:** Alle 7 bestehenden TTS-Warnungen (Akku niedrig/
+kritisch, Geofence verletzt, Sperrzone nähert sich, Umkehrpunkt erreicht,
+Energiereserve kritisch, Telemetrie verloren) können optional statt der
+Sprachausgabe einen konkreten EdgeTX-Sound abspielen. Menüeintrag
+Telemetrie & Hardware -> Warntöne... öffnet
+`ui/sound_alert_settings_dialog.py` - pro Warnung ein durchsuchbares
+Dropdown (alle gefundenen `.wav`-Dateien) plus Vorhören-Knopf; Änderungen
+werden sofort übernommen und persistiert (kein OK/Abbrechen nötig, analog
+zum Telemetrie-Variablen-Editor).
+
+**Architektur:** `core/sound_alerts.py` (neu) - `WARNING_TYPES` (die 7
+`tts_*`-Schlüssel + kurzer UI-Label-Schlüssel), `list_available_sounds()`
+(rekursiver Scan von `assets/en/**/*.wav` über `core/resources.py`s
+`resource_path()`, funktioniert sowohl aus dem Quellbaum als auch im
+gepackten Exe, da `assets/` bereits vollständig ins PyInstaller-Bundle
+eingeht), Persistenz der Zuordnung unter
+`~/.elrs_ground_station/sound_alert_settings.json` (Schema: `{tts_schlüssel:
+relativer_pfad}`, fehlender Eintrag = weiterhin Sprachausgabe).
+`alerts/tts_alert.py`s `TTSWorker.say(text, key=None)` bekam den optionalen
+`key`-Parameter; in `run()` wird bei konfiguriertem Sound
+`winsound.PlaySound(..., SND_FILENAME)` (nur unter Windows, sonst
+transparenter Fallback auf die bisherige `pyttsx3`-Sprachausgabe)
+synchron auf demselben Hintergrund-Thread abgespielt, auf dem bisher schon
+`engine.runAndWait()` blockierte. Alle bestehenden Aufrufer
+(`BatteryAlertMonitor`, `GeofenceMonitor`, `NfzProximityMonitor`,
+`EnergyBudgetMonitor`, `LostModelMonitor`) übergeben jetzt zusätzlich zum
+gesprochenen Text ihren jeweiligen `tts_*`-Schlüssel.
+
+**Bewusst nicht umgesetzt:** keine Lautstärkeregelung/eigene Sounddateien
+außerhalb des EdgeTX-Pakets hochladen, keine plattformübergreifende
+Soundwiedergabe (nur Windows/`winsound` - passend zum reinen
+Windows-Vertrieb dieser App als `.exe`), kein Cross-Fade/Überlappen
+mehrerer gleichzeitiger Warnungen (Queue bleibt seriell wie bisher).
+
 ## Schritt 4 — Umsetzungsreihenfolge und Refactorings
 
 ### Nötige Refactorings vor/während der Umsetzung

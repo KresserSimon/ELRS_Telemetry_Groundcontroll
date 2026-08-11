@@ -37,13 +37,17 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
   kommen aus lokalen Regions-Dateien (automatisch anhand der Home-Position
   ausgewählt), die über **Anzeige & Karte → Kartentyp → Vektorkarten-
   Region herunterladen...** direkt in der App bezogen werden – lädt per
-  HTTP-Range-Requests nur die Kacheln der gewählten Region aus Protomaps'
-  öffentlichem Tages-Build, ohne die komplette Weltkarte herunterzuladen;
-  danach funktioniert die Region komplett offline. Kein automatisches
-  Update im Hintergrund – bei Bedarf einfach erneut herunterladen (siehe
-  Roadmap für einen möglichen Auto-Update-Mechanismus). Ist noch keine
-  passende Region vorhanden, bleibt die Karte leer und ein Hinweis-Dialog
-  erklärt, wie man eine herunterlädt.
+  HTTP-Range-Requests nur die Kacheln der gewählten Region(en) aus
+  Protomaps' öffentlichem Tages-Build, ohne die komplette Weltkarte
+  herunterzuladen; danach funktionieren die Regionen komplett offline. Der
+  Dialog erlaubt Mehrfachauswahl (Checkboxen + Suchfeld, "Alle auswählen"/
+  "Auswahl aufheben") aus praktisch ganz Europa (~38 Länder/Regionen, von
+  Portugal bis in die Ukraine, von Island bis Griechenland) und lädt die
+  ausgewählten Regionen nacheinander herunter. Kein automatisches Update im
+  Hintergrund – bei Bedarf einfach erneut herunterladen (siehe Roadmap für
+  einen möglichen Auto-Update-Mechanismus). Ist noch keine passende Region
+  vorhanden, bleibt die Karte leer und ein Hinweis-Dialog erklärt, wie man
+  eine herunterlädt.
 - **Frei konfigurierbares Dashboard**: GPS, Funkverbindung, Akku (inkl.
   Strom/mAh und Min-Zellspannung), zusätzliche Sensoren (Vario, Baro-Höhe,
   RPM, Temperatur) und Long-Range-Werte (Geschwindigkeit, Entfernung/Peilung
@@ -156,6 +160,14 @@ Ausführliches Benutzerhandbuch (PDF, Deutsch):
 - **Modell-Profile**: speichert/lädt benannte Profile mit Akku- und
   Dashboard-Einstellungen, um zwischen mehreren Modellen schnell
   umzuschalten.
+- **Warntöne aus dem EdgeTX-Soundpaket**: jede der sieben Sprachwarnungen
+  (Akku niedrig/kritisch, Geofence verletzt, Sperrzone nähert sich,
+  Umkehrpunkt erreicht, Energiereserve kritisch, Telemetrie verloren) kann
+  über **Telemetrie & Hardware → Warntöne...** statt der Sprachausgabe
+  einen frei wählbaren Sound aus dem mitgelieferten EdgeTX-Sprachpaket
+  (`assets/en`, ~730 Dateien) abspielen – durchsuchbares Dropdown pro
+  Warnung, mit Vorhören-Knopf. Ohne Zuordnung bleibt es bei der bisherigen
+  Sprachausgabe.
 
 Funktioniert mit Flugsteuerungen (ArduPilot/Betaflight/iNav), die ihre
 Telemetrie per MAVLink ausgeben, ebenso wie mit dem rohen CRSF/TBS-Crossfire-
@@ -200,9 +212,10 @@ Raster-Karte: eine Regions-Datei enthält von vornherein die kompletten
 Kartendaten für das ganze Land, es muss also – anders als beim
 Kachel-Cache oben – vorher gar nichts online besucht werden, sobald sie
 einmal heruntergeladen ist. Der Download selbst (**Anzeige & Karte →
-Kartentyp → Vektorkarten-Region herunterladen...**) braucht natürlich
-einmalig eine Internetverbindung; danach ist die Region dauerhaft offline
-nutzbar, auch ohne erneuten Download.
+Kartentyp → Vektorkarten-Region herunterladen...**, mit Mehrfachauswahl
+aus ~38 europäischen Ländern/Regionen) braucht natürlich einmalig eine
+Internetverbindung; danach sind die heruntergeladenen Regionen dauerhaft
+offline nutzbar, auch ohne erneuten Download.
 
 ## Installation
 
@@ -435,8 +448,9 @@ pyinstaller --name ELRS_GroundStation --onedir --icon assets/app_icon.ico --add-
 `--add-data "docs;docs"` bündelt das PDF-Handbuch mit, damit Hilfe →
 Benutzerhandbuch öffnen... es auch in der kompilierten Exe findet, nicht
 nur beim Start aus dem Quellcode. `--add-data "assets;assets"` bündelt das
-App-Icon und Logo mit (Fenster-/Taskleisten-Icon, Logo im Start-Popup);
-`--icon assets/app_icon.ico` setzt zusätzlich das Icon der Exe-Datei
+App-Icon und Logo (Fenster-/Taskleisten-Icon, Logo im Start-Popup) sowie
+das komplette EdgeTX-Soundpaket (`assets/en`, für die Warntöne-Funktion)
+mit; `--icon assets/app_icon.ico` setzt zusätzlich das Icon der Exe-Datei
 selbst (Explorer-Ansicht, Alt+Tab).
 
 Ergebnis liegt unter `dist\ELRS_GroundStation\ELRS_GroundStation.exe` – der
@@ -610,12 +624,16 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   heatmap - only switching the map type itself needs a restart. Map data
   comes from local region files (picked automatically based on the home
   position), fetched directly in-app via **Display & Map → Map Type →
-  Download Vector Map Region...** - downloads only the selected region's
+  Download Vector Map Region...** - downloads only the selected region(s)'
   tiles from Protomaps' public daily build via HTTP range requests,
-  without downloading the whole planet; the region then works fully
-  offline afterward. No automatic background updates - just re-download
-  if you want a newer one. If no matching region exists yet, the map
-  stays blank and a dialog explains how to get one.
+  without downloading the whole planet; the regions then work fully
+  offline afterward. The dialog supports multi-select (checkboxes + a
+  search box, "Select all"/"Deselect all") across nearly all of Europe
+  (~38 countries/regions, from Portugal to Ukraine, Iceland to Greece) and
+  downloads the checked regions one after another. No automatic background
+  updates - just re-download if you want a newer one. If no matching
+  region exists yet, the map stays blank and a dialog explains how to get
+  one.
 - **A fully configurable dashboard**: GPS, radio link, battery (incl.
   current/mAh and minimum cell voltage), extra sensors (vario, baro
   altitude, RPM, temperature), and long-range readouts (speed,
@@ -722,6 +740,14 @@ of Mission Planner or QGroundControl. Built for anyone who just wants
   external antenna tracker.
 - **Model profiles**: save/load named profiles bundling battery and
   dashboard settings, to switch between different aircraft quickly.
+- **Warning sounds from the EdgeTX voice pack**: each of the seven voice
+  warnings (battery low/critical, geofence breached, no-fly zone
+  approaching, turn-back point reached, energy reserve critical, telemetry
+  lost) can play a custom sound from the bundled EdgeTX voice pack
+  (`assets/en`, ~730 files) instead of text-to-speech, via **Telemetry &
+  Hardware → Warning Sounds...** - a searchable dropdown per warning, with
+  a preview button. Leaving a warning unassigned keeps the existing
+  spoken-text behavior.
 
 Works with flight controllers (ArduPilot/Betaflight/iNav) that output
 their telemetry via MAVLink, as well as with the raw CRSF/TBS Crossfire
@@ -762,9 +788,10 @@ The **vector map** (see above) has a different offline story than the
 raster map: a region file already contains the complete map data for the
 whole country up front, so unlike the tile cache above, nothing needs to
 be visited online beforehand at all once it's downloaded. The download
-itself (**Display & Map → Map Type → Download Vector Map Region...**)
-naturally needs a one-time internet connection; after that the region
-works offline permanently, no re-download required.
+itself (**Display & Map → Map Type → Download Vector Map Region...**,
+with multi-select across ~38 European countries/regions) naturally needs
+a one-time internet connection; after that the downloaded regions work
+offline permanently, no re-download required.
 
 ## Installation
 

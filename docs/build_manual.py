@@ -477,19 +477,29 @@ def build_story():
         "Kartendaten für die Vektorkarte kommen aus lokalen Regions-Dateien (automatisch anhand "
         "der Home-Position ausgewählt, siehe auch Abschnitt 5 zur Offline-Nutzung). Diese Dateien "
         "lassen sich direkt in der App herunterladen: Anzeige & Karte -&gt; Kartentyp -&gt; "
-        "Vektorkarten-Region herunterladen... öffnet einen Dialog mit einer Länderauswahl "
-        "(aktuell Deutschland, Österreich, Schweiz, Italien) und lädt per HTTP-Range-Requests nur "
-        "die Kacheln der gewählten Region aus Protomaps' öffentlichem Kartendaten-Archiv - nicht "
-        "die komplette Weltkarte. Ein Fortschrittsbalken zeigt den Downloadstand, ein Klick auf "
-        "Abbrechen bricht ihn ab. Ist noch keine passende Region vorhanden, bleibt die Karte beim "
-        "Start leer und ein Dialog erklärt, wie eine heruntergeladen wird. Es gibt kein "
-        "automatisches Hintergrund-Update - bei Bedarf einfach erneut über denselben Menüpunkt "
-        "herunterladen."
+        "Vektorkarten-Region herunterladen... öffnet einen Dialog mit einer Länderliste (Ankreuz"
+        "feld pro Land, Suchfeld, Alle auswählen/Auswahl aufheben) - aktuell knapp 38 europäische "
+        "Länder/Regionen, von Portugal bis in die Ukraine, von Island bis Griechenland. Mehrere "
+        "Länder lassen sich gleichzeitig ankreuzen und werden dann automatisch nacheinander "
+        "heruntergeladen; pro Region lädt die App per HTTP-Range-Requests nur deren eigene "
+        "Kacheln aus Protomaps' öffentlichem Kartendaten-Archiv - nicht die komplette Weltkarte. "
+        "Ein Fortschrittsbalken zeigt den Downloadstand der aktuellen Region (bei mehreren "
+        "Regionen zusätzlich \"Region X/N\"), ein Klick auf Abbrechen bricht die laufende Region "
+        "ab und überspringt alle noch nicht gestarteten. Der Dialog ist nicht-modal: die "
+        "restliche App (Karte, Telemetrie, Fliegen) bleibt während eines laufenden Downloads "
+        "voll bedienbar - der eigentliche Download läuft ohnehin schon in einem eigenen "
+        "Hintergrund-Thread, nicht auf dem GUI-Thread. Ist noch keine passende Region vorhanden, "
+        "bleibt die Karte beim Start leer und ein Dialog erklärt, wie eine heruntergeladen wird. "
+        "Es gibt kein automatisches Hintergrund-Update - bei Bedarf einfach erneut über denselben "
+        "Menüpunkt herunterladen."
     ))
     story.append(P(
         "Sowohl beim Start aus dem Quellcode (python main.py) als auch in der kompilierten .exe "
         "funktioniert die Vektorkarte identisch, sobald eine Region heruntergeladen wurde (siehe "
-        "auch Abschnitt 14)."
+        "auch Abschnitt 14). Die neu hinzugekommenen europäischen Regionen jenseits von "
+        "Deutschland/Österreich/Schweiz/Italien nutzen näherungsweise Bounding-Boxen (nicht "
+        "einzeln gegen echte Regions-Header verifiziert) - der reale Download-Ausschnitt kann "
+        "dadurch am Rand geringfügig größer oder kleiner ausfallen als das jeweilige Land."
     ))
     story.append(P("7.2 No-Fly-Zones, Distanz-Warnung und OpenAIP", "h2"))
     story.append(P(
@@ -670,6 +680,7 @@ def build_story():
         "Verbindung... - wechselt zur Laufzeit zwischen WiFi/UDP und USB/Seriell sowie zwischen MAVLink und CRSF.",
         "Log-Einstellungen... / Logging aktiv - siehe Abschnitt 10.",
         "Akkuwarnung... - siehe Abschnitt 13.",
+        "Warntöne... - siehe Abschnitt 13.1.",
         "MAVLink-STATUSTEXT-Konsole anzeigen - Rohtext-Meldungen der Flugsteuerung, farblich nach Schweregrad.",
         "Dashboard-Größe -&gt; Klein (75&#37;) / Mittel (100&#37;) / Groß (125&#37;) - skaliert "
         "Schrift, Icons und Abstände der gesamten Telemetrie-Leiste; wird beim ersten Start "
@@ -721,6 +732,24 @@ def build_story():
         "(CRSF-Cells-Frame oder MAVLink BATTERY_STATUS), verwendet die App die tatsächliche "
         "niedrigste Zellspannung für die Warnung."
     ))
+    story.append(P("13.1 Warntöne (EdgeTX-Sounds)", "h2"))
+    story.append(P(
+        "Standardmäßig werden alle Warnungen der App - Akku niedrig/kritisch, Geofence "
+        "verletzt, Sperrzone nähert sich, Umkehrpunkt erreicht, Energiereserve kritisch, "
+        "Telemetrie verloren - per Sprachausgabe (SAPI5) angesagt. Über Telemetrie & Hardware "
+        "-&gt; Warntöne... lässt sich jeder dieser sieben Warnungen stattdessen ein konkreter "
+        "Sound aus dem mitgelieferten EdgeTX-Sprachpaket zuordnen (assets/en, dieselben "
+        "System- und Skript-Sounds, mit denen EdgeTX-Sender ausgeliefert werden - ca. 730 "
+        "Dateien)."
+    ))
+    story.append(P(
+        "Der Dialog zeigt pro Warnung ein durchsuchbares Auswahlfeld (Freitext filtert die "
+        "Liste) sowie einen Vorhören-Knopf. Änderungen werden sofort übernommen, es gibt keinen "
+        "OK/Abbrechen-Schritt. Bleibt eine Warnung auf \"Sprachausgabe (Standard)\" stehen, "
+        "verhält sie sich unverändert wie bisher. Die Sound-Wiedergabe funktioniert nur unter "
+        "Windows (über die Windows-eigene winsound-API); unter anderen Betriebssystemen fällt "
+        "die App automatisch auf die Sprachausgabe zurück."
+    ))
 
     # --- 14. Exe ---
     story.append(P("14. Als eigenständige .exe kompilieren", "h1"))
@@ -735,8 +764,8 @@ def build_story():
     story.append(P(
         "--add-data \"docs;docs\" bündelt das PDF-Handbuch mit in die Exe, damit Hilfe -&gt; "
         "Benutzerhandbuch öffnen... es auch dort findet. --add-data \"assets;assets\" bündelt "
-        "App-Icon und Logo; --icon assets/app_icon.ico setzt zusätzlich das Icon der Exe-Datei "
-        "selbst."
+        "App-Icon, Logo und das komplette EdgeTX-Soundpaket (assets/en, für Abschnitt 13.1); "
+        "--icon assets/app_icon.ico setzt zusätzlich das Icon der Exe-Datei selbst."
     ))
     story.append(P(
         "Das Ergebnis liegt unter dist\\ELRS_GroundStation\\ELRS_GroundStation.exe. Der gesamte "
