@@ -1845,7 +1845,7 @@ class MainWindow(QMainWindow):
         self._last_telemetry_time = time.time()
         self._last_telemetry_state = state
         self._lost_model_monitor.note_telemetry(state)
-        self._dashboard.update_state(state)
+        self._dashboard.update_state(state, cells=self._battery_cells)
         self._horizon.update_attitude(state.roll, state.pitch)
 
         if state.has_gps_fix():

@@ -55,25 +55,33 @@ def _scaled_px(base_px: int, scale: float) -> int:
 
 def _group_qss(scale: float) -> str:
     title_font = _scaled_px(_BASE_GROUP_TITLE_FONT_PX, scale)
+    # The title used to sit ON the box's top border (subcontrol-origin:
+    # margin, negative top offset, panel-colored background) - a classic
+    # "notched border" look, but confirmed by a real report to read as
+    # floating outside/disconnected from its own box rather than as that
+    # box's heading. Now positioned inside the box's own padding area
+    # instead, right below the accent border, with a transparent
+    # background so it visually belongs to the box behind it.
+    title_top_padding = _scaled_px(18, scale)
     return f"""
         QGroupBox {{
             background-color: {GROUP_BG};
             border: 1px solid {GROUP_BORDER};
             border-top: 2px solid {ACCENT};
             border-radius: 4px;
-            margin-top: 12px;
-            padding: 8px 6px 4px 6px;
+            margin-top: 4px;
+            padding: {title_top_padding}px 6px 4px 6px;
         }}
         QGroupBox::title {{
-            subcontrol-origin: margin;
+            subcontrol-origin: padding;
             subcontrol-position: top left;
             left: 8px;
-            top: -2px;
-            padding: 0 5px;
+            top: 2px;
+            padding: 0;
             color: {ACCENT};
             font-size: {title_font}px;
             font-weight: 700;
-            background-color: {PANEL_BG};
+            background-color: transparent;
         }}
     """
 
@@ -268,13 +276,24 @@ class Dashboard(QWidget):
         self.voltage = _Field("dash_voltage")
         self.remaining = _Field("dash_remaining")
         self.min_cell = _Field("dash_min_cell")
+        # Distinct from min_cell above: min_cell reads a real per-cell
+        # measurement (CRSF cells frame / MAVLink BATTERY_STATUS) when the
+        # hardware actually provides one - a safety figure, since a single
+        # weak cell is what actually limits the pack. avg_cell is just the
+        # total pack voltage divided by the model's configured cell count
+        # (see MainWindow._battery_cells), so it's available even when no
+        # per-cell telemetry exists at all, but only ever an approximation.
+        self.avg_cell = _Field("dash_avg_cell")
         self.battery_current = _Field("dash_battery_current")
         self.battery_capacity_used = _Field("dash_battery_capacity_used")
         self.battery_icon_label = _icon_label(icons.battery_icon(None))
         self._dynamic_icon_labels.append(self.battery_icon_label)
         self._group(
             "dash_battery",
-            [self.voltage, self.remaining, self.min_cell, self.battery_current, self.battery_capacity_used],
+            [
+                self.voltage, self.remaining, self.min_cell, self.avg_cell,
+                self.battery_current, self.battery_capacity_used,
+            ],
             icon_label=self.battery_icon_label,
         )
 
@@ -649,7 +668,7 @@ class Dashboard(QWidget):
         self._model_label.setText(i18n.tr("dashboard_model_label"))
         self._model_combo.setItemText(0, i18n.tr("dashboard_model_none"))
 
-    def update_state(self, state: TelemetryState) -> None:
+    def update_state(self, state: TelemetryState, cells: Optional[int] = None) -> None:
         self.gps_lat.set_text(f"{state.lat:.6f}" if state.lat is not None else _NA)
         self.gps_lon.set_text(f"{state.lon:.6f}" if state.lon is not None else _NA)
         self.gps_alt.set_text(f"{state.alt:.1f}" if state.alt is not None else _NA)
@@ -668,6 +687,8 @@ class Dashboard(QWidget):
         self.voltage.set_text(f"{state.battery_voltage:.2f}" if state.battery_voltage is not None else _NA)
         self.remaining.set_text(str(state.battery_remaining) if state.battery_remaining is not None else _NA)
         self.min_cell.set_text(f"{min(state.cell_voltages):.2f}" if state.cell_voltages else _NA)
+        avg_cell = state.battery_voltage / cells if state.battery_voltage is not None and cells else None
+        self.avg_cell.set_text(f"{avg_cell:.2f}" if avg_cell is not None else _NA)
         self.battery_current.set_text(f"{state.battery_current:.1f}" if state.battery_current is not None else _NA)
         self.battery_capacity_used.set_text(
             f"{state.battery_capacity_used:.0f}" if state.battery_capacity_used is not None else _NA

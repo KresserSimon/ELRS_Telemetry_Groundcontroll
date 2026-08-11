@@ -60,6 +60,41 @@ class StaleVisibleFieldsFallbackTest(unittest.TestCase):
         self.assertEqual(dashboard.visible_fields(), dashboard.all_field_keys())
 
 
+class AvgCellVoltageTest(unittest.TestCase):
+    """avg_cell is deliberately distinct from min_cell: min_cell reads a
+    real per-cell measurement when the hardware provides one (a safety
+    figure), avg_cell is just total pack voltage / configured cell count,
+    so it's available even with no per-cell telemetry at all - only ever
+    an approximation."""
+
+    def setUp(self):
+        self.dashboard = Dashboard()
+
+    def test_divides_pack_voltage_by_cell_count(self):
+        self.dashboard.update_state(TelemetryState(battery_voltage=16.8), cells=4)
+        self.assertEqual(self.dashboard.avg_cell.value.text(), "4.20")
+
+    def test_shows_na_without_a_cell_count(self):
+        self.dashboard.update_state(TelemetryState(battery_voltage=16.8), cells=None)
+        self.assertEqual(self.dashboard.avg_cell.value.text(), "--")
+
+    def test_shows_na_without_pack_voltage(self):
+        self.dashboard.update_state(TelemetryState(battery_voltage=None), cells=4)
+        self.assertEqual(self.dashboard.avg_cell.value.text(), "--")
+
+    def test_shows_na_with_zero_cells(self):
+        self.dashboard.update_state(TelemetryState(battery_voltage=16.8), cells=0)
+        self.assertEqual(self.dashboard.avg_cell.value.text(), "--")
+
+    def test_independent_of_real_per_cell_data(self):
+        # Even with real cell_voltages present (min_cell's source), avg_cell
+        # still comes from pack voltage / configured count, not from those.
+        state = TelemetryState(battery_voltage=16.0, cell_voltages=[3.5, 4.5, 4.0, 4.0])
+        self.dashboard.update_state(state, cells=4)
+        self.assertEqual(self.dashboard.min_cell.value.text(), "3.50")
+        self.assertEqual(self.dashboard.avg_cell.value.text(), "4.00")
+
+
 class SetScaleTest(unittest.TestCase):
     """Built after a real report: the dashboard was tuned on a 4K/200%
     dev display and looked visibly cramped on a 1920x1080/100% laptop -
