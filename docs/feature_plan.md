@@ -891,6 +891,91 @@ P3 (Windschätzung, PMTiles-Fix) abgeschlossen ist:
   aber mechanischer Umbau; am ehesten sinnvoll als zentrale
   Formatierungsfunktion statt Umbau jeder einzelnen Anzeigestelle.
 
+### P5: Telemetrie-Variablen-Editor (Autoerkennung) — nur grob skizziert
+
+**Nutzeranfrage (wörtlich):** "Ein Editor für die Autoerkennung der
+Telemetrievariablen. Dieser soll die empfangenen Variablen erkennen und
+anzeigen. Dann soll auch manuell editiert werden können (Löschen,
+Namensgebung und anderes)." Explizit nur zum Planen angefragt, noch nicht
+zur Umsetzung.
+
+**Ziel:** Ein UI-Bereich, der zur Laufzeit erkennt, welche
+Telemetrie-Variablen die aktuelle Verbindung tatsächlich sendet - auch
+über den festen, bereits geparsten `TelemetryState`-Datensatz hinaus -,
+sie dem Nutzer live anzeigt und manuelles Bearbeiten erlaubt (Ausblenden/
+Löschen, eigener Anzeigename, ggf. weitere Metadaten).
+
+**Ist-Zustand (warum das heute nicht geht):** `telemetry/mavlink_worker.py`
+und `telemetry/crsf_parser.py` parsen jeweils nur eine feste, im Code
+hartcodierte Liste bekannter Message-/Frame-Typen in feste
+`TelemetryState`-Felder (siehe `_apply_message()`). Alles, was eine
+Flugsteuerung zusätzlich sendet - z. B. MAVLink `NAMED_VALUE_FLOAT`/
+`NAMED_VALUE_INT` (der übliche Weg für benutzerdefinierte Firmware-Werte),
+`DEBUG`/`DEBUG_VECT`, ESC-Telemetrie (`ESC_STATUS`/`ESC_INFO`) oder
+schlicht weitere, hier noch nicht abgefragte Standardfelder - wird
+komplett verworfen, es gibt aktuell keinen Erfassungspunkt dafür. Das
+Dashboard (`ui/dashboard.py`) kennt ausschließlich die feste, beim Start
+einmalig aufgebaute Feldliste - kein Mechanismus, zur Laufzeit neue Felder
+hinzuzufügen oder zu entfernen.
+
+**Grobe Architekturidee:**
+1. `TelemetryState` bekommt ein zusätzliches generisches Feld, z. B.
+   `extra: Dict[str, float] = field(default_factory=dict)`. Für
+   ausgewählte "Catch-all"-MAVLink-Messages (mindestens
+   `NAMED_VALUE_FLOAT`/`NAMED_VALUE_INT`) trägt `mavlink_worker.py` deren
+   `name`/`value`-Paar dort ein, statt sie zu verwerfen.
+2. Neues `core/telemetry_catalog.py`: sammelt über die Laufzeit einer
+   Verbindung alle bisher gesehenen Schlüssel (aus `state.extra`, optional
+   auch die festen bekannten Felder mit einbezogen) in einer Registry
+   (Schlüssel -> letzter Wert, eigener Anzeigename, sichtbar/gelöscht,
+   zuerst gesehen). Persistiert Nutzer-Overrides (Name, Sichtbarkeit)
+   unter `~/.elrs_ground_station/telemetry_variable_overrides.json`,
+   analog zu `dashboard_fields.json`.
+3. Neuer Dialog `ui/telemetry_variable_editor_dialog.py`: Tabelle mit
+   Quelle/Schlüssel, aktuellem Live-Wert, eigenem Anzeigenamen, Sichtbar-
+   Checkbox und Löschen - aktualisiert sich laufend, während eine
+   Verbindung aktiv ist.
+4. Optional (deutlich größerer Umbau): sichtbare, nicht gelöschte
+   Extra-Variablen als zusätzliche Dashboard-Felder anzeigen, vermutlich
+   in einer neuen "Benutzerdefiniert"-Gruppe - erfordert, `Dashboard`
+   erstmals um dynamisches Hinzufügen/Entfernen von Feldern zur Laufzeit
+   zu erweitern (aktuell baut `Dashboard.__init__()` alle Felder einmalig
+   und fest auf).
+
+**Offene Fragen/Risiken (bewusst nicht vorab entschieden):**
+- Scope zunächst nur MAVLink (naheliegend über `NAMED_VALUE_*`) oder auch
+  CRSF (deutlich starreres, kompakteres Frameformat - schwieriger generisch
+  zu erfassen)?
+- Wie generisch die Erkennung sein soll: nur explizite Catch-all-Messages,
+  oder wirklich jedes Feld jeder empfangenen Message (viel mehr Rauschen,
+  u. a. Sequenznummern/CRC/interne Zähler müssten herausgefiltert werden)?
+- Update-Frequenz/Performance bei sehr generischer Erfassung und hoher
+  Telemetrierate - eventuell drosseln, ähnlich der bestehenden Karten-
+  Update-Drosselung.
+- Umgang mit Namenskollisionen (zwei Message-Typen mit zufällig gleichem
+  Feldnamen).
+- Soll das Fluglog (Abschnitt 10 des Handbuchs, `export/flight_logger.py`)
+  erkannte Extra-Variablen mit aufzeichnen können? Das feste
+  `ALL_FIELDS`-Spaltenschema müsste dafür um dynamische Spalten erweitert
+  werden - ein eigener kleiner Entwurf für sich.
+- Demo-Modus sendet aktuell keine "unbekannten" Extra-Variablen - für ein
+  sinnvolles Ausprobieren ohne echte Hardware bräuchte `demo_worker.py`
+  ein paar synthetische Beispielwerte.
+
+**Betroffene/neue Dateien (grobe Skizze, nicht endgültig):**
+`core/telemetry_state.py` (neues `extra`-Feld), `telemetry/mavlink_worker.py`
+(neuer Catch-all-Zweig), `core/telemetry_catalog.py` (neu),
+`ui/telemetry_variable_editor_dialog.py` (neu), `ui/dashboard.py`
+(dynamische Felder, nur falls Punkt 4 oben mitgebaut wird),
+`ui/main_window.py` (Menüeintrag, vermutlich unter Telemetrie & Hardware,
+Verkabelung Worker -> Catalog -> Dialog).
+
+**Grober Aufwand:** eher groß (mehrere Tage) - anders als die meisten
+bisherigen P2/P3-Punkte ist das keine Erweiterung nach bereits etabliertem
+Muster, sondern die erste echte Öffnung der bisher statischen, fest
+verdrahteten Telemetrie-/Dashboard-Architektur für dynamisch entdeckte
+Felder.
+
 ## Schritt 4 — Umsetzungsreihenfolge und Refactorings
 
 ### Nötige Refactorings vor/während der Umsetzung
