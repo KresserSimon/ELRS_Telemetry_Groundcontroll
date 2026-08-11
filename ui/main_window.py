@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressDialog,
+    QScrollArea,
     QSplitter,
     QStatusBar,
     QWidget,
@@ -231,6 +232,20 @@ class MainWindow(QMainWindow):
         # always wins after that, exactly like horizon_scale above.
         auto_scale = auto_dashboard_scale(detect_available_width(QApplication.primaryScreen()))
         self._dashboard.set_scale(self._ui_state.get("dashboard_scale", auto_scale))
+        # The dashboard's natural (unscrolled) minimum height - many field
+        # groups plus a docked horizon/altitude chart - can exceed a real
+        # screen's usable height (confirmed by a real report: content ran
+        # off the bottom, behind the taskbar, with the map's own corner
+        # buttons unreachable along with it). A plain QWidget's minimum
+        # size propagates straight up to the splitter and then the whole
+        # window, which "maximized" can't shrink below - wrapping it in a
+        # scroll area caps what the window is forced to grow to; anything
+        # that doesn't fit scrolls instead of pushing the window (and
+        # everything below it) off-screen.
+        self._dashboard_scroll = QScrollArea()
+        self._dashboard_scroll.setWidget(self._dashboard)
+        self._dashboard_scroll.setWidgetResizable(True)
+        self._dashboard_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self._horizon = HorizonWidget()
         self._horizon.set_scale(self._ui_state.get("horizon_scale", DEFAULT_HORIZON_SCALE))
         self._map.add_overlay(self._horizon, self._ui_state.get("horizon_corner", DEFAULT_HORIZON_CORNER))
@@ -329,7 +344,7 @@ class MainWindow(QMainWindow):
 
         self._splitter = QSplitter()
         self._splitter.addWidget(self._map)
-        self._splitter.addWidget(self._dashboard)
+        self._splitter.addWidget(self._dashboard_scroll)
         layout.addWidget(self._splitter)
         self.setCentralWidget(central)
 
@@ -1532,6 +1547,12 @@ class MainWindow(QMainWindow):
 
         self._dashboard.apply_layout(profile.dashboard_group_order, profile.dashboard_rows)
         save_dashboard_layout(profile.dashboard_group_order, profile.dashboard_rows)
+        # Re-fits the splitter's dashboard-pane width to whatever column
+        # count the loaded profile actually needs (see
+        # _apply_dashboard_position()) - a profile with more columns than
+        # currently fit would otherwise stay clipped until something else
+        # happens to trigger a re-fit.
+        self._apply_dashboard_position(self._dashboard_position)
 
         self._dashboard.set_current_model_profile_name(profile.name)
 
@@ -1666,13 +1687,13 @@ class MainWindow(QMainWindow):
         self._dashboard.set_vertical(side_docked)
         self._splitter.setOrientation(Qt.Orientation.Horizontal if side_docked else Qt.Orientation.Vertical)
         if position in ("top", "left"):
-            self._splitter.insertWidget(0, self._dashboard)
+            self._splitter.insertWidget(0, self._dashboard_scroll)
             self._splitter.insertWidget(1, self._map)
         else:
             self._splitter.insertWidget(0, self._map)
-            self._splitter.insertWidget(1, self._dashboard)
+            self._splitter.insertWidget(1, self._dashboard_scroll)
         map_index = self._splitter.indexOf(self._map)
-        dashboard_index = self._splitter.indexOf(self._dashboard)
+        dashboard_index = self._splitter.indexOf(self._dashboard_scroll)
         self._splitter.setStretchFactor(map_index, 1)
         self._splitter.setStretchFactor(dashboard_index, 0)
 
@@ -1703,6 +1724,19 @@ class MainWindow(QMainWindow):
             if total <= 0:
                 return
             dashboard_extent = round(total * DEFAULT_DASHBOARD_SPLIT_FRACTION)
+            if side_docked:
+                # The flat 20% default can be narrower than what the
+                # dashboard's own chosen column count actually needs (its
+                # width is no longer free to silently borrow space from
+                # the map now that it's wrapped in a scroll area - see
+                # self._dashboard_scroll - so an under-sized allocation
+                # used to just widen the pane automatically, and now
+                # instead clips/squeezes the extra columns). Confirmed via
+                # a real report: a 2-column layout at 20% width showed
+                # only slivers of the second column. Never shrink below
+                # what's actually needed to show every column at its
+                # natural width.
+                dashboard_extent = max(dashboard_extent, self._dashboard.minimumSizeHint().width())
             sizes = [0, 0]
             sizes[dashboard_index] = dashboard_extent
             sizes[map_index] = total - dashboard_extent
