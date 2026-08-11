@@ -7,11 +7,13 @@ once inside run() and reused for every subsequent phrase.
 from __future__ import annotations
 
 import queue
+import sys
 from typing import Optional
 
 from PyQt6.QtCore import QThread
 
 from core import i18n
+from core import sound_alerts
 from core.telemetry_state import TelemetryState
 
 LEVEL_NONE = "none"
@@ -34,15 +36,18 @@ class TTSWorker(QThread):
 
     def __init__(self) -> None:
         super().__init__()
-        self._queue: "queue.Queue[str]" = queue.Queue()
+        self._queue: "queue.Queue[tuple[str, Optional[str]]]" = queue.Queue()
         self._running = True
 
-    def say(self, text: str) -> None:
-        self._queue.put(text)
+    def say(self, text: str, key: Optional[str] = None) -> None:
+        """key, if given, is one of core.sound_alerts.WARNING_TYPES' keys -
+        used to look up a user-configured EdgeTX sound file that replaces
+        the spoken phrase (falls back to TTS when none is configured)."""
+        self._queue.put((text, key))
 
     def stop(self) -> None:
         self._running = False
-        self._queue.put("")  # unblock the queue.get()
+        self._queue.put(("", None))  # unblock the queue.get()
         self.wait(3000)
 
     def run(self) -> None:
@@ -53,14 +58,30 @@ class TTSWorker(QThread):
             engine = None
 
         while self._running:
-            text = self._queue.get()
-            if not text or engine is None:
+            text, key = self._queue.get()
+            if not text:
+                continue
+            sound_path = sound_alerts.get_sound_path(key)
+            if sound_path is not None and self._play_sound(sound_path):
+                continue
+            if engine is None:
                 continue
             try:
                 engine.say(text)
                 engine.runAndWait()
             except Exception:
                 pass
+
+    @staticmethod
+    def _play_sound(path) -> bool:
+        if sys.platform != "win32":
+            return False
+        try:
+            import winsound
+            winsound.PlaySound(str(path), winsound.SND_FILENAME)
+            return True
+        except Exception:
+            return False
 
 
 class BatteryAlertMonitor:
@@ -126,10 +147,10 @@ class BatteryAlertMonitor:
         if level != self._level:
             self._level = level
             self._last_announce = now
-            self._tts.say(self._message(level))
+            self._tts.say(self._message(level), key=self._key(level))
         elif (now - self._last_announce) >= REANNOUNCE_INTERVAL_S:
             self._last_announce = now
-            self._tts.say(self._message(level))
+            self._tts.say(self._message(level), key=self._key(level))
 
     def _evaluate_level(self, state: TelemetryState) -> str:
         # A real weakest-cell reading is more accurate than percent-remaining
@@ -170,3 +191,7 @@ class BatteryAlertMonitor:
         if level == LEVEL_CRITICAL:
             return i18n.tr("tts_critical")
         return i18n.tr("tts_low")
+
+    @staticmethod
+    def _key(level: str) -> str:
+        return "tts_critical" if level == LEVEL_CRITICAL else "tts_low"

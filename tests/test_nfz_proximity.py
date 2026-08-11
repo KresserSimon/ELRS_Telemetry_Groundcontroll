@@ -14,7 +14,7 @@ class _FakeTts:
     def __init__(self) -> None:
         self.messages = []
 
-    def say(self, text: str) -> None:
+    def say(self, text: str, key=None) -> None:
         self.messages.append(text)
 
 

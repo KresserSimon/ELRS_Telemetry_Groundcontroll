@@ -176,4 +176,4 @@ class EnergyBudgetMonitor:
 
     def _speak(self, level: str) -> None:
         key = "tts_energy_budget_critical" if level == LEVEL_RED else "tts_energy_budget_low"
-        self._tts.say(i18n.tr(key))
+        self._tts.say(i18n.tr(key), key=key)

@@ -62,10 +62,10 @@ class LostModelMonitor:
         if self._lost_since is None:
             self._lost_since = last_telemetry_time
             self._last_announce = now
-            self._tts.say(i18n.tr("tts_model_lost"))
+            self._tts.say(i18n.tr("tts_model_lost"), key="tts_model_lost")
         elif (now - self._last_announce) >= REANNOUNCE_INTERVAL_S:
             self._last_announce = now
-            self._tts.say(i18n.tr("tts_model_lost"))
+            self._tts.say(i18n.tr("tts_model_lost"), key="tts_model_lost")
 
     def is_lost(self) -> bool:
         return self._lost_since is not None

@@ -52,7 +52,7 @@ class GeofenceMonitor:
         if not self._warning_active:
             self._warning_active = True
             self._last_announce = now
-            self._tts.say(i18n.tr("tts_geofence_breach"))
+            self._tts.say(i18n.tr("tts_geofence_breach"), key="tts_geofence_breach")
         elif (now - self._last_announce) >= REANNOUNCE_INTERVAL_S:
             self._last_announce = now
-            self._tts.say(i18n.tr("tts_geofence_breach"))
+            self._tts.say(i18n.tr("tts_geofence_breach"), key="tts_geofence_breach")

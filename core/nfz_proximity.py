@@ -120,7 +120,7 @@ class NfzProximityMonitor:
         if not self._warning_active:
             self._warning_active = True
             self._last_announce = now
-            self._tts.say(i18n.tr("tts_nfz_proximity"))
+            self._tts.say(i18n.tr("tts_nfz_proximity"), key="tts_nfz_proximity")
         elif (now - self._last_announce) >= REANNOUNCE_INTERVAL_S:
             self._last_announce = now
-            self._tts.say(i18n.tr("tts_nfz_proximity"))
+            self._tts.say(i18n.tr("tts_nfz_proximity"), key="tts_nfz_proximity")
