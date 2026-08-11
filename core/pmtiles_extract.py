@@ -114,17 +114,66 @@ class RegionSpec:
     max_lat: float
 
 
-# Bounding boxes read directly from each region's own PMTiles header (via
-# the `pmtiles show` CLI against the existing dev_data/pmtiles extracts),
-# not guessed - see the migration plan. The single source of truth for
-# both the auto-selected local file (ui/map_widget.py's
-# _select_pmtiles_region()) and the manual "download a region" dialog
-# (ui/pmtiles_download_dialog.py).
+# Bounding boxes for the first four (DE/AT/CH/IT) were read directly from
+# each region's own PMTiles header (via the `pmtiles show` CLI against the
+# already-extracted dev_data/pmtiles files, not guessed) - see the
+# migration plan. Every other country below has no local extract to read a
+# header from, so its bbox is a reasonable approximation instead
+# (mainland extent only for countries with far-flung overseas
+# territories, e.g. France/Portugal/Spain/Denmark/Norway) - not
+# authoritative, and these are plain rectangles rather than real country
+# outlines regardless, so border-area overlap between neighbors is
+# already expected and resolved by fixed check order (see
+# _select_pmtiles_region()). Full country list added on request, but
+# deliberately without downloading/verifying every single one - only
+# DE/AT/CH/IT have actually been extracted and confirmed to work end to
+# end so far.
+#
+# The single source of truth for both the auto-selected local file
+# (ui/map_widget.py's _select_pmtiles_region()) and the manual "download a
+# region" dialog (ui/pmtiles_download_dialog.py).
 KNOWN_REGIONS: Tuple[RegionSpec, ...] = (
     RegionSpec("germany.pmtiles", "pmtilesregion_germany", 5.87, 47.27, 15.04, 55.06),
     RegionSpec("austria.pmtiles", "pmtilesregion_austria", 9.53, 46.37, 17.16, 49.02),
     RegionSpec("switzerland.pmtiles", "pmtilesregion_switzerland", 5.96, 45.82, 10.49, 47.81),
     RegionSpec("italy.pmtiles", "pmtilesregion_italy", 6.63, 35.49, 18.58, 47.10),
+    # -- Western/Northern Europe --
+    RegionSpec("france.pmtiles", "pmtilesregion_france", -5.14, 41.33, 9.56, 51.09),
+    RegionSpec("spain.pmtiles", "pmtilesregion_spain", -9.30, 35.95, 4.33, 43.79),
+    RegionSpec("portugal.pmtiles", "pmtilesregion_portugal", -9.50, 36.96, -6.19, 42.15),
+    RegionSpec("united_kingdom.pmtiles", "pmtilesregion_united_kingdom", -8.65, 49.86, 1.76, 60.86),
+    RegionSpec("ireland.pmtiles", "pmtilesregion_ireland", -10.48, 51.39, -5.99, 55.39),
+    RegionSpec("belgium.pmtiles", "pmtilesregion_belgium", 2.51, 49.50, 6.16, 51.51),
+    RegionSpec("netherlands.pmtiles", "pmtilesregion_netherlands", 3.31, 50.75, 7.09, 53.55),
+    RegionSpec("luxembourg.pmtiles", "pmtilesregion_luxembourg", 5.73, 49.44, 6.53, 50.18),
+    RegionSpec("denmark.pmtiles", "pmtilesregion_denmark", 8.07, 54.56, 15.20, 57.75),
+    RegionSpec("norway.pmtiles", "pmtilesregion_norway", 4.65, 57.96, 31.29, 71.19),
+    RegionSpec("sweden.pmtiles", "pmtilesregion_sweden", 11.03, 55.34, 24.17, 69.06),
+    RegionSpec("finland.pmtiles", "pmtilesregion_finland", 20.55, 59.80, 31.59, 70.09),
+    RegionSpec("iceland.pmtiles", "pmtilesregion_iceland", -24.55, 63.39, -13.49, 66.54),
+    # -- Central/Eastern Europe --
+    RegionSpec("poland.pmtiles", "pmtilesregion_poland", 14.12, 49.00, 24.15, 54.84),
+    RegionSpec("czechia.pmtiles", "pmtilesregion_czechia", 12.09, 48.55, 18.86, 51.06),
+    RegionSpec("slovakia.pmtiles", "pmtilesregion_slovakia", 16.83, 47.73, 22.57, 49.61),
+    RegionSpec("hungary.pmtiles", "pmtilesregion_hungary", 16.11, 45.74, 22.90, 48.59),
+    RegionSpec("estonia.pmtiles", "pmtilesregion_estonia", 23.34, 57.52, 28.21, 59.68),
+    RegionSpec("latvia.pmtiles", "pmtilesregion_latvia", 20.97, 55.67, 28.24, 58.08),
+    RegionSpec("lithuania.pmtiles", "pmtilesregion_lithuania", 20.94, 53.90, 26.84, 56.45),
+    RegionSpec("belarus.pmtiles", "pmtilesregion_belarus", 23.18, 51.26, 32.77, 56.17),
+    RegionSpec("ukraine.pmtiles", "pmtilesregion_ukraine", 22.14, 44.39, 40.23, 52.38),
+    RegionSpec("moldova.pmtiles", "pmtilesregion_moldova", 26.62, 45.47, 30.16, 48.49),
+    # -- Southeastern Europe / Balkans --
+    RegionSpec("slovenia.pmtiles", "pmtilesregion_slovenia", 13.38, 45.42, 16.61, 46.88),
+    RegionSpec("croatia.pmtiles", "pmtilesregion_croatia", 13.49, 42.39, 19.45, 46.55),
+    RegionSpec("bosnia_and_herzegovina.pmtiles", "pmtilesregion_bosnia_and_herzegovina", 15.74, 42.56, 19.62, 45.28),
+    RegionSpec("serbia.pmtiles", "pmtilesregion_serbia", 18.83, 42.23, 23.01, 46.19),
+    RegionSpec("montenegro.pmtiles", "pmtilesregion_montenegro", 18.43, 41.85, 20.36, 43.56),
+    RegionSpec("north_macedonia.pmtiles", "pmtilesregion_north_macedonia", 20.45, 40.85, 23.03, 42.37),
+    RegionSpec("kosovo.pmtiles", "pmtilesregion_kosovo", 20.02, 41.86, 21.80, 43.27),
+    RegionSpec("albania.pmtiles", "pmtilesregion_albania", 19.28, 39.64, 21.06, 42.66),
+    RegionSpec("greece.pmtiles", "pmtilesregion_greece", 19.37, 34.80, 29.65, 41.75),
+    RegionSpec("bulgaria.pmtiles", "pmtilesregion_bulgaria", 22.36, 41.24, 28.61, 44.22),
+    RegionSpec("romania.pmtiles", "pmtilesregion_romania", 20.26, 43.62, 29.75, 48.27),
 )
 FALLBACK_REGION_FILE = "germany.pmtiles"  # matches the demo default (Munich)
 
