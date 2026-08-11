@@ -12,7 +12,16 @@ from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from core import geo, i18n
 from core.dashboard_config import load_dashboard_layout, load_visible_fields
@@ -401,8 +410,15 @@ class Dashboard(QWidget):
     def _rebuild_box_layout(self, box: QGroupBox, vertical: bool) -> None:
         """Swap a group's internal field layout between a horizontal row
         (icon + fields side by side - the default, for a top/bottom-docked
-        dashboard) and a vertical stack (for a left/right-docked one, where
-        a wide row would just overflow a narrow column)."""
+        dashboard) and a vertical arrangement (for a left/right-docked one,
+        where a wide row would just overflow a narrow column).
+
+        The vertical case packs fields into a 2-column grid rather than a
+        single one-per-row stack once a box has more than a couple of
+        fields - built after a real ask to fit every active field on
+        screen without needing the dashboard to scroll (see
+        MainWindow._dashboard_scroll, still the fallback for whatever
+        genuinely doesn't fit)."""
         old_layout = box.layout()
         if old_layout is not None:
             while old_layout.count():
@@ -411,14 +427,31 @@ class Dashboard(QWidget):
             # (now-empty) layout onto a throwaway widget so it detaches.
             QWidget().setLayout(old_layout)
 
-        new_layout = QVBoxLayout() if vertical else QHBoxLayout()
-        new_layout.setSpacing(6 if vertical else 10)
+        fields = self._fields_by_box.get(box, [])
         icon_label = self._icon_by_box.get(box)
-        if icon_label is not None:
-            new_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignHCenter if vertical else Qt.AlignmentFlag(0))
-        for f in self._fields_by_box.get(box, []):
-            f.set_centered(vertical)
-            new_layout.addWidget(f)
+
+        if vertical:
+            new_layout = QVBoxLayout()
+            new_layout.setSpacing(6)
+            if icon_label is not None:
+                new_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignHCenter)
+            grid = QGridLayout()
+            grid.setHorizontalSpacing(10)
+            grid.setVerticalSpacing(6)
+            field_columns = 2 if len(fields) > 2 else 1
+            for i, f in enumerate(fields):
+                f.set_centered(True)
+                grid.addWidget(f, i // field_columns, i % field_columns)
+            new_layout.addLayout(grid)
+        else:
+            new_layout = QHBoxLayout()
+            new_layout.setSpacing(10)
+            if icon_label is not None:
+                new_layout.addWidget(icon_label)
+            for f in fields:
+                f.set_centered(False)
+                new_layout.addWidget(f)
+
         box.setLayout(new_layout)
 
     def set_vertical(self, vertical: bool) -> None:
@@ -546,7 +579,13 @@ class Dashboard(QWidget):
         left/right - see set_vertical() - `rows` side-by-side columns), in
         `group_order`. Any group missing from a stale/incomplete saved
         order is appended at the end rather than dropped, so newly added
-        groups stay visible."""
+        groups stay visible.
+
+        Uses a real QGridLayout rather than independent same-orientation
+        lanes - built after a real ask for the boxes to actually align in
+        rows AND columns (a lane with fewer/shorter boxes than its
+        neighbors used to just be top-aligned on its own, not lined up
+        with the others row-by-row)."""
         ordered_keys = [k for k in group_order if k in self._boxes_by_key]
         ordered_keys += [k for k in self._boxes_by_key if k not in ordered_keys]
         self._group_order = ordered_keys
@@ -555,12 +594,7 @@ class Dashboard(QWidget):
         for box in boxes:
             box.setParent(None)
 
-        # The outer container itself only needs rebuilding when the
-        # top/bottom vs. left/right orientation actually changed (Qt only
-        # allows one setLayout() per widget) - otherwise just clear and
-        # refill the existing one, exactly as before orientation support.
-        wanted_outer_cls = QHBoxLayout if self._vertical else QVBoxLayout
-        if not isinstance(self._outer, wanted_outer_cls):
+        if not isinstance(self._outer, QGridLayout):
             old_outer = self._outer
             while old_outer.count():
                 item = old_outer.takeAt(0)
@@ -568,9 +602,10 @@ class Dashboard(QWidget):
                 if w is not None:
                     w.deleteLater()
             QWidget().setLayout(old_outer)
-            self._outer = wanted_outer_cls()
+            self._outer = QGridLayout()
             self._outer.setContentsMargins(0, 0, 0, 0)
-            self._outer.setSpacing(4)
+            self._outer.setHorizontalSpacing(12)
+            self._outer.setVerticalSpacing(6)
             self._matrix_container.setLayout(self._outer)
         else:
             while self._outer.count():
@@ -578,6 +613,13 @@ class Dashboard(QWidget):
                 w = item.widget()
                 if w is not None:
                     w.deleteLater()
+            # Stretch factors from a previous pass would otherwise linger
+            # on the reused QGridLayout and throw off this pass's own
+            # leftover-space handling below.
+            for i in range(self._outer.rowCount()):
+                self._outer.setRowStretch(i, 0)
+            for i in range(self._outer.columnCount()):
+                self._outer.setColumnStretch(i, 0)
 
         if self._vertical and boxes:
             # In a narrow docked column, boxes with different caption
@@ -592,18 +634,23 @@ class Dashboard(QWidget):
                 box.setMinimumWidth(0)
 
         self._rows = max(1, min(rows, len(boxes) or 1))
-        chunk_size = max(1, math.ceil(len(boxes) / self._rows)) if boxes else 1
-        chunks = [boxes[i:i + chunk_size] for i in range(0, len(boxes), chunk_size)] or [[]]
-        lane_cls = QVBoxLayout if self._vertical else QHBoxLayout
-        for chunk in chunks:
-            lane_widget = QWidget()
-            lane_layout = lane_cls(lane_widget)
-            lane_layout.setContentsMargins(0, 0, 0, 0)
-            lane_layout.setSpacing(12)
-            for box in chunk:
-                lane_layout.addWidget(box)
-            lane_layout.addStretch(1)
-            self._outer.addWidget(lane_widget)
+        lane_size = max(1, math.ceil(len(boxes) / self._rows)) if boxes else 1
+        last_row = last_col = 0
+        for i, box in enumerate(boxes):
+            lane_index, pos_in_lane = i // lane_size, i % lane_size
+            # Side-docked: each "lane" (the rows param) is a column,
+            # filled top-to-bottom. Top/bottom-docked: each lane is a
+            # row, filled left-to-right. Same fill order the old
+            # chunk-based lanes used, just placed into real, aligned grid
+            # cells instead of independent same-height-unaware widgets.
+            row, col = (pos_in_lane, lane_index) if self._vertical else (lane_index, pos_in_lane)
+            self._outer.addWidget(box, row, col)
+            last_row, last_col = max(last_row, row), max(last_col, col)
+
+        # An extra stretch row/column absorbs any leftover space in the
+        # matrix container instead of stretching the boxes themselves.
+        self._outer.setRowStretch(last_row + 1, 1)
+        self._outer.setColumnStretch(last_col + 1, 1)
 
         self._apply_uniform_field_width()
 

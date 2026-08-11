@@ -891,13 +891,22 @@ P3 (Windschätzung, PMTiles-Fix) abgeschlossen ist:
   aber mechanischer Umbau; am ehesten sinnvoll als zentrale
   Formatierungsfunktion statt Umbau jeder einzelnen Anzeigestelle.
 
-### P5: Telemetrie-Variablen-Editor (Autoerkennung) — nur grob skizziert
+### P5: Telemetrie-Variablen-Editor (Autoerkennung) — umgesetzt
+
+**Umsetzungsstand:** Grundfunktion implementiert (siehe unten, Umfang aus
+der ursprünglichen Skizze): `TelemetryState.extra`, MAVLink
+`NAMED_VALUE_FLOAT`/`NAMED_VALUE_INT` -> `core/telemetry_catalog.py` ->
+`ui/telemetry_variable_editor_dialog.py` (Telemetrie & Hardware ->
+Telemetrie-Variablen-Editor...). Bewusst **nicht** umgesetzt (siehe
+"Offene Fragen" unten, weiterhin offen): CRSF-Unterstützung, dynamische
+Dashboard-Felder für sichtbare Extra-Variablen (Punkt 4 der Architekturidee),
+Fluglog-Integration.
 
 **Nutzeranfrage (wörtlich):** "Ein Editor für die Autoerkennung der
 Telemetrievariablen. Dieser soll die empfangenen Variablen erkennen und
 anzeigen. Dann soll auch manuell editiert werden können (Löschen,
-Namensgebung und anderes)." Explizit nur zum Planen angefragt, noch nicht
-zur Umsetzung.
+Namensgebung und anderes)." Ursprünglich nur zum Planen angefragt, dann in
+derselben Sitzung auch umgesetzt.
 
 **Ziel:** Ein UI-Bereich, der zur Laufzeit erkennt, welche
 Telemetrie-Variablen die aktuelle Verbindung tatsächlich sendet - auch

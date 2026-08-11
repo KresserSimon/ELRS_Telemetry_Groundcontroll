@@ -60,6 +60,7 @@ from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_t
 from core.model_profiles import ModelProfile, load_profiles, save_profiles
 from core.resources import resource_path
 from core.route import RouteManager
+from core.telemetry_catalog import TelemetryVariableCatalog
 from core.telemetry_state import TelemetryState
 from core.tracker_output import TrackerOutputSender
 from core.ui_state_config import load_ui_state, save_ui_state
@@ -100,6 +101,7 @@ from ui.pmtiles_download_dialog import PMTilesDownloadDialog
 from ui.replay_transport_overlay import ReplayTransportOverlay
 from ui.route_editor_overlay import RouteEditorOverlay
 from ui.statustext_console import StatusTextConsole
+from ui.telemetry_variable_editor_dialog import TelemetryVariableEditorDialog
 from ui.warning_banner import WarningBanner
 from ui.track_overlay import TrackOverlay
 from ui.tracker_output_dialog import TrackerOutputDialog
@@ -371,6 +373,7 @@ class MainWindow(QMainWindow):
         self._mission_session = None  # Optional[MissionUploadSession | MissionDownloadSession]
         self._command_session = None  # Optional[CommandSession] (RTH/mode-change)
         self._mission_progress_dialog = None  # Optional[QProgressDialog]
+        self._telemetry_catalog = TelemetryVariableCatalog()
 
         self._i18n_menus: list[tuple] = []
         self._i18n_actions: list[tuple] = []
@@ -868,6 +871,10 @@ class MainWindow(QMainWindow):
         self._statustext_console_action.toggled.connect(self._statustext_console.setVisible)
         self._statustext_console.closed.connect(lambda: self._statustext_console_action.setChecked(False))
 
+        telemetry_variable_editor_action = telemetry_menu.addAction("")
+        self._i18n_actions.append((telemetry_variable_editor_action, "menu_telemetry_variable_editor"))
+        telemetry_variable_editor_action.triggered.connect(self._open_telemetry_variable_editor)
+
         # MAVLink RTH/mode-change - only meaningful with a real MAVLink
         # connection, disabled (not hidden) otherwise; see
         # _update_mavlink_command_availability().
@@ -1064,6 +1071,7 @@ class MainWindow(QMainWindow):
         self._dashboard.update_energy_budget(self._energy_budget_monitor.last_result())
         self._lost_model_monitor.reset()
         self._lost_model_overlay.set_inactive()
+        self._telemetry_catalog.clear()
         self._warning_banner.setVisible(False)
 
     def _start_replay(self, states: list) -> None:
@@ -1392,6 +1400,10 @@ class MainWindow(QMainWindow):
 
     def _open_tracker_output(self) -> None:
         dialog = TrackerOutputDialog(self._tracker_output_sender, self)
+        dialog.exec()
+
+    def _open_telemetry_variable_editor(self) -> None:
+        dialog = TelemetryVariableEditorDialog(self._telemetry_catalog, self)
         dialog.exec()
 
     def _on_tracker_output_error(self, message: str) -> None:
@@ -1846,6 +1858,7 @@ class MainWindow(QMainWindow):
         self._last_telemetry_state = state
         self._lost_model_monitor.note_telemetry(state)
         self._dashboard.update_state(state, cells=self._battery_cells)
+        self._telemetry_catalog.observe(state.extra)
         self._horizon.update_attitude(state.roll, state.pitch)
 
         if state.has_gps_fix():

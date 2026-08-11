@@ -96,6 +96,14 @@ class DemoWorker(TelemetryWorker):
             s.temperature = round(35.0 + random.uniform(-1.0, 1.0), 1)
             s.groundspeed = round(CRUISE_SPEED_MPS + random.uniform(-0.5, 0.5), 1)
 
+            # A couple of synthetic "unknown" values (matching the shape
+            # of real MAVLink NAMED_VALUE_FLOAT traffic) so the
+            # telemetry-variable editor (core/telemetry_catalog.py) has
+            # something to discover and show without needing real
+            # hardware that actually sends custom values.
+            s.extra["esc_temp_c"] = round(45.0 + 5.0 * math.sin(angle * 3), 1)
+            s.extra["vtx_temp_c"] = round(52.0 + 3.0 * math.cos(angle * 2), 1)
+
             s.connected = True
             s.source = "demo"
             self.telemetry_received.emit(s.copy())

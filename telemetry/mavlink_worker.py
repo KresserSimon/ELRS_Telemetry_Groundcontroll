@@ -203,6 +203,19 @@ class MAVLinkWorker(TelemetryWorker):
             # "same value" check treats as "no real airspeed data".
             s.airspeed = msg.airspeed
 
+        elif msg_type in ("NAMED_VALUE_FLOAT", "NAMED_VALUE_INT"):
+            # Catch-all for telemetry outside the fixed fields above -
+            # e.g. custom firmware/sensor values a flight controller
+            # exposes under its own name, with no dedicated field here to
+            # parse them into. See core/telemetry_catalog.py and
+            # docs/feature_plan.md's "Telemetrie-Variablen-Editor".
+            name = msg.name
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", errors="replace")
+            name = name.rstrip("\x00")
+            if name:
+                s.extra[name] = float(msg.value)
+
         elif msg_type == "STATUSTEXT":
             # An event (prearm/EKF/mode-change messages, etc.), not a
             # persistent field - deliberately NOT written into `s`/

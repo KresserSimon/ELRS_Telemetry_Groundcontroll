@@ -63,6 +63,47 @@ class VfrHudParsingTest(unittest.TestCase):
         self.assertEqual(self.worker._state.airspeed, 9.0)
 
 
+class _FakeNamedValueMsg:
+    def __init__(self, msg_type, name, value):
+        self._msg_type = msg_type
+        self.name = name
+        self.value = value
+
+    def get_type(self):
+        return self._msg_type
+
+
+class NamedValueParsingTest(unittest.TestCase):
+    def setUp(self):
+        self.worker = MAVLinkWorker()
+
+    def test_named_value_float_is_written_into_extra(self):
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_FLOAT", "esc_temp", 42.5))
+        self.assertEqual(self.worker._state.extra, {"esc_temp": 42.5})
+
+    def test_named_value_int_is_written_into_extra_as_float(self):
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_INT", "loop_count", 1200))
+        self.assertEqual(self.worker._state.extra, {"loop_count": 1200.0})
+
+    def test_decodes_bytes_name_and_strips_nul_padding(self):
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_FLOAT", b"esc_temp" + b"\x00" * 8, 42.5))
+        self.assertEqual(self.worker._state.extra, {"esc_temp": 42.5})
+
+    def test_multiple_names_accumulate_across_messages(self):
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_FLOAT", "esc_temp", 42.5))
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_FLOAT", "vtx_temp", 55.0))
+        self.assertEqual(self.worker._state.extra, {"esc_temp": 42.5, "vtx_temp": 55.0})
+
+    def test_same_name_again_updates_rather_than_duplicates(self):
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_FLOAT", "esc_temp", 42.5))
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_FLOAT", "esc_temp", 46.0))
+        self.assertEqual(self.worker._state.extra, {"esc_temp": 46.0})
+
+    def test_empty_name_is_ignored(self):
+        self.worker._apply_message(_FakeNamedValueMsg("NAMED_VALUE_FLOAT", "\x00" * 8, 42.5))
+        self.assertEqual(self.worker._state.extra, {})
+
+
 class SendQueueTest(unittest.TestCase):
     def setUp(self):
         self.worker = MAVLinkWorker()

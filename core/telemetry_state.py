@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field, replace
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -38,6 +38,15 @@ class TelemetryState:
     temperature: Optional[float] = None    # degC, first reported sensor
     cell_voltages: Optional[List[float]] = None  # volts, one per cell
 
+    # Catch-all for telemetry outside the fixed fields above - e.g. MAVLink
+    # NAMED_VALUE_FLOAT/NAMED_VALUE_INT (see core/telemetry_catalog.py and
+    # docs/feature_plan.md's "Telemetrie-Variablen-Editor"). A worker
+    # accumulates into this dict in place across ticks (different names
+    # can arrive in separate messages), so copy() below defensively
+    # shallow-copies it - the original keeps being mutated by the worker
+    # thread after a snapshot has already been handed off to the GUI thread.
+    extra: Dict[str, float] = field(default_factory=dict)
+
     connected: bool = False
     source: str = ""                       # 'mavlink' | 'crsf' | 'demo'
     timestamp: float = field(default_factory=time.time)
@@ -50,4 +59,4 @@ class TelemetryState:
         )
 
     def copy(self) -> "TelemetryState":
-        return replace(self, timestamp=time.time())
+        return replace(self, timestamp=time.time(), extra=dict(self.extra))
