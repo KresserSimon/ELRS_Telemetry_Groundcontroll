@@ -14,7 +14,17 @@ class SerialPortInfo:
 
 
 def list_serial_ports() -> List[SerialPortInfo]:
+    # pyserial's Windows backend queries WMI per device and can raise
+    # pywintypes.com_error for certain USB composite devices (e.g. a
+    # RadioMaster transmitter exposing both a joystick/HID and a serial
+    # interface) - letting that escape here used to crash the whole app at
+    # startup (ConnectionSettingsDialog refreshes this list unconditionally
+    # on open) whenever such a device happened to be plugged in.
+    try:
+        ports = list(serial.tools.list_ports.comports())
+    except Exception:
+        return []
     return [
         SerialPortInfo(device=p.device, description=p.description or "")
-        for p in serial.tools.list_ports.comports()
+        for p in ports
     ]

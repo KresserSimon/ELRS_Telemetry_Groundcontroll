@@ -252,6 +252,13 @@ def build_story():
         "überschreibbar). Diese Verbindungsart ersetzt Weg 1/2, ist kein Zusatz dazu."
     ))
     story.append(P(
+        "Die Port-Liste im Verbindungs-Popup wird beim Öffnen automatisch aktualisiert. "
+        "Schlägt die Windows-USB-Geräteerkennung dabei für ein angeschlossenes Gerät fehl "
+        "(kam z. B. bei manchen RadioMaster-Sendern im Joystick/Seriell-Kombimodus vor und "
+        "ließ die App beim Start abstürzen), bleibt die Liste für den betroffenen Port "
+        "seit diesem Fix einfach leer, statt die App zu beenden."
+    ))
+    story.append(P(
         "In allen WiFi-Fällen müssen PC und Bridge/Modul im selben Netzwerk sein. Alle drei Wege "
         "lassen sich auch nachträglich über Telemetrie & Hardware -&gt; Verbindung... ändern, "
         "ohne die App neu zu starten."

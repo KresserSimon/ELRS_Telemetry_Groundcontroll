@@ -435,6 +435,12 @@ Beschreibung auflisten. Danach:
 Diese Verbindungsart ist ein Ersatz für Weg 1/2, kein Zusatz – `--connection`
 wählt UDP (Standard) oder USB, unabhängig vom gewählten `--protocol`.
 
+Die Port-Liste im Verbindungs-Popup wird beim Öffnen automatisch aktualisiert;
+schlägt die Windows-USB-Geräteerkennung dabei für ein angeschlossenes Gerät
+fehl (kam z. B. bei manchen RadioMaster-Sendern im Joystick/Seriell-Kombimodus
+vor und ließ die App beim Start abstürzen), bleibt die Liste seit diesem Fix
+für den betroffenen Port einfach leer, statt die App zu beenden.
+
 ## Als .exe kompilieren (Windows)
 
 ```bash
@@ -997,6 +1003,12 @@ with its description. Then:
 This connection type is a replacement for Path 1/2, not an addition -
 `--connection` picks UDP (default) or USB, independent of the chosen
 `--protocol`.
+
+The port list in the connection popup refreshes automatically whenever it
+opens; if Windows' USB device enumeration fails for a connected device (seen
+with some RadioMaster transmitters in combined joystick/serial mode, which
+used to crash the app on startup), the list just stays empty for that port
+since this fix, instead of taking the whole app down.
 
 ## Compiling to a .exe (Windows)
 
