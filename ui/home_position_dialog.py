@@ -7,16 +7,19 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
 
 from core import i18n
+from core.ip_geolocation import IpGeolocationError, lookup_ip_location
 
 DEFAULT_LAT = 48.1372
 DEFAULT_LON = 11.5756
@@ -51,6 +54,9 @@ class HomePositionDialog(QDialog):
         use_live_btn.setEnabled(live_position is not None)
         use_live_btn.clicked.connect(lambda: self._use_live(live_position))
 
+        use_ip_btn = QPushButton(i18n.tr("home_use_ip_btn"))
+        use_ip_btn.clicked.connect(self._use_ip_location)
+
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
@@ -58,12 +64,33 @@ class HomePositionDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(use_live_btn)
+        layout.addWidget(use_ip_btn)
         layout.addWidget(button_box)
 
     def _use_live(self, live_position: Optional[Tuple[float, float]]) -> None:
         if live_position is None:
             return
         lat, lon = live_position
+        self._lat_spin.setValue(lat)
+        self._lon_spin.setValue(lon)
+
+    def _use_ip_location(self) -> None:
+        # City-level accuracy (a few km) - good enough to pick the right
+        # map region, not a substitute for a real GPS fix. Synchronous
+        # on purpose: this is a single quick request triggered by an
+        # explicit button click, same pattern as the OpenAIP zone fetch.
+        self.setCursor(Qt.CursorShape.WaitCursor)
+        try:
+            lat, lon = lookup_ip_location()
+        except IpGeolocationError as exc:
+            self.unsetCursor()
+            QMessageBox.warning(
+                self,
+                i18n.tr("msgbox_ip_geolocation_failed_title"),
+                i18n.tr("msgbox_ip_geolocation_failed_body", error=str(exc)),
+            )
+            return
+        self.unsetCursor()
         self._lat_spin.setValue(lat)
         self._lon_spin.setValue(lon)
 

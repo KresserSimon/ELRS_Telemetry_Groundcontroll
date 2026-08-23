@@ -68,6 +68,16 @@ class SelectPmtilesRegionFallbackTest(unittest.TestCase):
         result = map_widget_module._select_pmtiles_region(48.1372, 11.5756)
         self.assertEqual(result, Path(self.primary_dir.name) / "germany.pmtiles")
 
+    def test_prefers_downloaded_region_among_overlapping_bboxes(self):
+        # Bregenz sits in the Lake Constance border area and falls inside
+        # both Germany's and Austria's bbox (see KNOWN_REGIONS) - someone
+        # who only downloaded Austria should get that file, not a
+        # "missing" prompt for Germany just because Germany is checked
+        # first.
+        (Path(self.primary_dir.name) / "austria.pmtiles").write_bytes(b"austria")
+        result = map_widget_module._select_pmtiles_region(47.5031, 9.7472)
+        self.assertEqual(result, Path(self.primary_dir.name) / "austria.pmtiles")
+
 
 class PmtilesDirTest(unittest.TestCase):
     def setUp(self):

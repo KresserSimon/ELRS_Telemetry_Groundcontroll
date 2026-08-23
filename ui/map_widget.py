@@ -70,17 +70,27 @@ def _pmtiles_search_dirs() -> List[Path]:
 
 
 def _select_pmtiles_region(lat: Optional[float], lon: Optional[float]) -> Path:
-    filename = FALLBACK_REGION_FILE
+    matches = [FALLBACK_REGION_FILE]
     if lat is not None and lon is not None:
-        for region in KNOWN_REGIONS:
-            if region.min_lon <= lon <= region.max_lon and region.min_lat <= lat <= region.max_lat:
-                filename = region.filename
-                break
-    for directory in _pmtiles_search_dirs():
-        candidate = directory / filename
-        if candidate.is_file():
-            return candidate
-    return pmtiles_dir() / filename  # missing - points at the primary (writable/download) location
+        found = [
+            region.filename
+            for region in KNOWN_REGIONS
+            if region.min_lon <= lon <= region.max_lon and region.min_lat <= lat <= region.max_lat
+        ]
+        if found:
+            matches = found
+    # These are plain rectangles, not real country outlines, so border
+    # areas routinely fall inside more than one country's box at once
+    # (e.g. Lake Constance matches both Germany's and Austria's) - among
+    # every bbox match, prefer whichever one is already downloaded, in
+    # bbox-check order, rather than always taking the first bbox match
+    # regardless of what's actually on disk.
+    for filename in matches:
+        for directory in _pmtiles_search_dirs():
+            candidate = directory / filename
+            if candidate.is_file():
+                return candidate
+    return pmtiles_dir() / matches[0]  # none downloaded yet - point at the primary bbox match
 
 
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")

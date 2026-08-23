@@ -362,9 +362,11 @@ Simulation | Einstellungen | Hilfe:
   wählbar. **Höhenprofil der Route anzeigen** öffnet ein Diagramm mit
   Gelände- und geplanter Flughöhe entlang der aktuellen Route.
 - **Einstellungen → Home-Position...** legt fest, wo die Karte beim
-  nächsten Start zentriert ist (Lat/Lon-Eingabe oder "aktuelle Position
-  übernehmen"); alternativ per Rechtsklick auf der Karte → "Als Home
-  setzen" direkt an der gewünschten Stelle teachen. **Dashboard
+  nächsten Start zentriert ist (Lat/Lon-Eingabe, "aktuelle Position
+  übernehmen" bei laufender Telemetrie, oder "Standort per IP ermitteln"
+  für eine grobe, Stadt-genaue Position ohne GPS-Fix – praktisch fürs
+  einmalige Einrichten zuhause); alternativ per Rechtsklick auf der Karte
+  → "Als Home setzen" direkt an der gewünschten Stelle teachen. **Dashboard
   anpassen...** blendet einzelne Dashboard-Felder ein/aus (nicht nur
   ganze Gruppen), ordnet die Gruppen in 1–3 Zeilen an und legt fest, ob
   das Dashboard oben, unten, links oder rechts im Fenster angedockt ist –
@@ -932,7 +934,9 @@ Simulation | Settings | Help:
   popup. **Show Route Elevation Profile** opens a chart of terrain and
   planned flight altitude along the current route.
 - **Settings → Home Position...** sets where the map centers on the next
-  launch (lat/lon entry, or "use current position"); alternatively,
+  launch (lat/lon entry, "use current position" while telemetry is live,
+  or "Detect Location via IP" for a rough, city-level position with no
+  GPS fix - handy for one-time setup at home); alternatively,
   right-click the map → "Set as Home" to teach it right where you're
   looking. **Customize Dashboard...** shows/hides individual dashboard
   fields (not just whole groups), arranges the groups into 1-3 rows, and

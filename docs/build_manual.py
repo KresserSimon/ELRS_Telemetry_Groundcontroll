@@ -550,10 +550,19 @@ def build_story():
         "Einstellungen -&gt; Home-Position... legt fest, wo die Karte beim nächsten Start "
         "zentriert ist - unabhängig von der live ermittelten Flugstart-Referenz (immer der erste "
         "GPS-Fix der laufenden Sitzung), die für die Entfernungs-/Peilungsanzeige im Dashboard "
-        "verwendet wird. Eine dritte, ebenfalls unabhängige Position ist die eigene "
-        "Bodenstations-Position (Einstellungen -&gt; Bodenstations-Position..., manuelle "
-        "Lat/Lon/Höhe-Eingabe) - sie dient als Referenzpunkt für die Azimut/Elevation-Anzeige im "
-        "Dashboard, gedacht zum manuellen Ausrichten einer Richtantenne."
+        "verwendet wird. Neben der manuellen Lat/Lon-Eingabe und \"Aktuelle Position übernehmen\" "
+        "(nur bei laufender Telemetrie verfügbar) bietet der Dialog \"Standort per IP ermitteln\": "
+        "eine grobe, Stadt-genaue Positionsbestimmung über einen Online-Dienst, ganz ohne "
+        "GPS-Fix - praktisch fürs einmalige Einrichten zuhause. Da diese Positionsangabe auch "
+        "bestimmt, welche Vektorkarten-Region automatisch geladen wird (siehe Abschnitt 7.1), "
+        "lohnt es sich, hier den tatsächlichen Wohn-/Startort einzutragen, statt es beim "
+        "App-Standardwert zu belassen."
+    ))
+    story.append(P(
+        "Eine dritte, ebenfalls unabhängige Position ist die eigene Bodenstations-Position "
+        "(Einstellungen -&gt; Bodenstations-Position..., manuelle Lat/Lon/Höhe-Eingabe) - sie "
+        "dient als Referenzpunkt für die Azimut/Elevation-Anzeige im Dashboard, gedacht zum "
+        "manuellen Ausrichten einer Richtantenne."
     ))
     story.append(P("7.6 Karten-Performance", "h2"))
     story.append(P(
