@@ -27,24 +27,27 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="ELRS Ground Station")
 
     parser.add_argument("--demo", action="store_true", help="Im Simulationsmodus starten (keine Hardware noetig)")
-    parser.add_argument("--protocol", choices=["mavlink", "crsf"], default="mavlink",
-                         help="Telemetrieprotokoll (Standard: mavlink)")
+    parser.add_argument("--protocol", choices=["mavlink", "crsf"], default=None,
+                         help="Telemetrieprotokoll (Standard: zuletzt verwendetes Protokoll, sonst CRSF/ExpressLRS)")
     parser.add_argument("--lang", choices=["de", "en"], default=None,
                          help="UI-Sprache (Standard: zuletzt gespeicherte Sprache, sonst Deutsch; "
                               "auch zur Laufzeit ueber Menue -> Sprache umschaltbar)")
 
-    parser.add_argument("--connection", choices=["udp", "usb"], default="udp",
-                         help="Transportweg: 'udp' fuer WiFi-Bridge, 'usb' fuer direkte USB/seriell-Verbindung")
-    parser.add_argument("--host", default="0.0.0.0", help="Lokale Bind-Adresse fuer den UDP-Empfang")
+    parser.add_argument("--connection", choices=["udp", "usb"], default=None,
+                         help="Transportweg: 'udp' fuer WiFi-Bridge, 'usb' fuer direkte USB/seriell-Verbindung "
+                              "(Standard: zuletzt verwendeter Transportweg, sonst USB)")
+    parser.add_argument("--host", default=None, help="Lokale Bind-Adresse fuer den UDP-Empfang (Standard: zuletzt verwendet, sonst 0.0.0.0)")
     parser.add_argument("--port", type=int, default=None,
-                         help="UDP-Port (Standard: 14550 fuer MAVLink, 14551 fuer CRSF)")
-    parser.add_argument("--udp-mode", choices=["listen", "connect"], default="listen",
-                         help="MAVLink: 'listen' wartet auf eingehende Pakete, 'connect' verbindet aktiv zu --host:--port")
+                         help="UDP-Port (Standard: zuletzt verwendet, sonst 14550 fuer MAVLink, 14551 fuer CRSF)")
+    parser.add_argument("--udp-mode", choices=["listen", "connect"], default=None,
+                         help="MAVLink: 'listen' wartet auf eingehende Pakete, 'connect' verbindet aktiv zu "
+                              "--host:--port (Standard: zuletzt verwendet, sonst 'listen')")
 
-    parser.add_argument("--serial-port", default="",
-                         help="USB/seriell-Port bei --connection usb, z.B. COM5")
+    parser.add_argument("--serial-port", default=None,
+                         help="USB/seriell-Port bei --connection usb, z.B. COM5 (Standard: zuletzt verwendeter Port)")
     parser.add_argument("--baud", type=int, default=None,
-                         help="Baudrate bei --connection usb (Standard: 57600 fuer MAVLink, 420000 fuer CRSF)")
+                         help="Baudrate bei --connection usb (Standard: zuletzt verwendet, sonst 57600 fuer "
+                              "MAVLink, 420000 fuer CRSF)")
     parser.add_argument("--list-ports", action="store_true",
                          help="Verfuegbare USB/seriell-Ports auflisten und beenden")
 
@@ -57,13 +60,47 @@ def parse_args(argv=None) -> argparse.Namespace:
 
     args = parser.parse_args(argv)
 
+    # Explicit CLI flags always win; anything left at its argparse default of
+    # None falls back to the last-used connection (see connection_dialog.py
+    # -> _apply_connection_values(), which persists this file whenever a
+    # connection is actually applied), and only falls back further to a
+    # hardcoded ELRS-over-USB default if nothing has ever been saved yet.
+    connection_was_explicit = args.connection is not None
+    serial_port_was_explicit = args.serial_port is not None
+
+    from core.connection_config import load_connection_settings
+    saved = load_connection_settings()
+
+    if args.protocol is None:
+        args.protocol = saved.get("protocol", "crsf")
+    if args.connection is None:
+        args.connection = saved.get("connection", "usb")
+    if args.host is None:
+        args.host = saved.get("host", "0.0.0.0")
+    if args.udp_mode is None:
+        args.udp_mode = saved.get("udp_mode", "listen")
+    if args.serial_port is None:
+        args.serial_port = saved.get("serial_port", "")
+
     if args.port is None:
-        args.port = 14550 if args.protocol == "mavlink" else 14551
+        args.port = saved.get("port") or (14550 if args.protocol == "mavlink" else 14551)
 
     if args.baud is None:
-        args.baud = 57600 if args.protocol == "mavlink" else 420000
+        args.baud = saved.get("baud") or (57600 if args.protocol == "mavlink" else 420000)
 
-    if args.connection == "usb" and not args.serial_port and not args.list_ports and not args.demo:
+    # Only fail fast here for a connection *explicitly* requested via the
+    # CLI without a port - the normal GUI path (no flags at all, e.g. a
+    # plain double-clicked .exe) always shows the startup connection dialog
+    # regardless, which lets the user pick a port there instead of crashing
+    # out before the window even opens.
+    if (
+        connection_was_explicit
+        and args.connection == "usb"
+        and not serial_port_was_explicit
+        and not args.serial_port
+        and not args.list_ports
+        and not args.demo
+    ):
         parser.error("--connection usb erfordert --serial-port (siehe --list-ports)")
 
     lat_str, lon_str = args.demo_center.split(",")

@@ -111,13 +111,13 @@ TOC_ENTRIES = [
 CLI_REFERENCE_ROWS = [
     ["Option", "Beschreibung"],
     ["--demo", "Im Simulationsmodus starten, keine Hardware nötig."],
-    ["--protocol {mavlink,crsf}", "Telemetrieprotokoll (Standard: mavlink)."],
-    ["--connection {udp,usb}", "Transportweg (Standard: udp)."],
-    ["--host", "Bind-Adresse für UDP-Empfang (Standard: 0.0.0.0)."],
-    ["--port", "UDP-Port (Standard: 14550 MAVLink / 14551 CRSF)."],
-    ["--udp-mode {listen,connect}", "listen wartet auf Pakete, connect verbindet aktiv zu Host:Port."],
-    ["--serial-port", "USB/seriell-Port bei --connection usb, z. B. COM5."],
-    ["--baud", "Baudrate bei USB (Standard: 57600 MAVLink / 420000 CRSF)."],
+    ["--protocol {mavlink,crsf}", "Telemetrieprotokoll (Standard: zuletzt verwendet, sonst CRSF/ExpressLRS)."],
+    ["--connection {udp,usb}", "Transportweg (Standard: zuletzt verwendet, sonst USB)."],
+    ["--host", "Bind-Adresse für UDP-Empfang (Standard: zuletzt verwendet, sonst 0.0.0.0)."],
+    ["--port", "UDP-Port (Standard: zuletzt verwendet, sonst 14550 MAVLink / 14551 CRSF)."],
+    ["--udp-mode {listen,connect}", "listen wartet auf Pakete, connect verbindet aktiv zu Host:Port (Standard: zuletzt verwendet, sonst listen)."],
+    ["--serial-port", "USB/seriell-Port bei --connection usb, z. B. COM5 (Standard: zuletzt verwendeter Port)."],
+    ["--baud", "Baudrate bei USB (Standard: zuletzt verwendet, sonst 57600 MAVLink / 420000 CRSF)."],
     ["--list-ports", "Verfügbare USB/seriell-Ports auflisten und beenden."],
     ["--cells", "Anzahl LiPo/Li-Ion-Zellen für die Akku-Warnschwellen."],
     ["--low-cell-voltage", 'Zellspannung für die "niedrig"-Warnung.'],
@@ -210,6 +210,15 @@ def build_story():
         "Abbrechen übernimmt einfach die per Kommandozeile übergebenen bzw. die "
         "Standard-Einstellungen; zwei eigene Buttons im Popup starten stattdessen direkt den "
         "Demo- bzw. den Plan-Modus (siehe Abschnitt 11) - ohne jede Telemetrieverbindung."
+    ))
+    story.append(P(
+        "Das Popup merkt sich die zuletzt tatsächlich verwendete Verbindung (Protokoll, "
+        "Transportweg, USB-Port/Baudrate bzw. Host/Port/Modus bei WiFi) und schlägt sie beim "
+        "nächsten Start automatisch wieder vor - ein erneutes Durchklicken jedes Mal ist nicht "
+        "nötig. Wurde noch nie eine Verbindung hergestellt (z. B. direkt nach der Installation), "
+        "sind CRSF (ExpressLRS) und USB/Seriell voreingestellt, da das der für die meisten "
+        "ELRS-Nutzer naheliegendste Startpunkt ist. Über die Kommandozeile explizit übergebene "
+        "Optionen (z. B. --protocol mavlink) haben immer Vorrang vor der gemerkten Einstellung."
     ))
 
     # --- 4. Verbindung zur Telemetrie herstellen ---

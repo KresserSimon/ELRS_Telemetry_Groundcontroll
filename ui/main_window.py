@@ -53,6 +53,7 @@ from core.flight_summary import summarize
 from core.gs_position import GsPosition, compute_azimuth_elevation, load_gs_position, save_gs_position
 from core.home_config import load_home_position, save_home_position
 from core.acg_nfz_import import load_bundled_austria_zones
+from core.connection_config import save_connection_settings
 from core.lost_model_monitor import DEFAULT_TIMEOUT_S as LOST_MODEL_DEFAULT_TIMEOUT_S, LostModelMonitor
 from core.nfz import NoFlyZoneManager
 from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor, nearest_zone
@@ -1263,6 +1264,7 @@ class MainWindow(QMainWindow):
         self._args.udp_mode = values["udp_mode"]
         self._args.serial_port = values["serial_port"]
         self._args.baud = values["baud"]
+        save_connection_settings(values)
         self._update_mavlink_command_availability()
 
     def _set_demo_checked_silently(self, checked: bool) -> None:
