@@ -78,6 +78,34 @@ class SelectPmtilesRegionFallbackTest(unittest.TestCase):
         result = map_widget_module._select_pmtiles_region(47.5031, 9.7472)
         self.assertEqual(result, Path(self.primary_dir.name) / "austria.pmtiles")
 
+    def test_override_wins_even_when_another_bbox_match_is_downloaded(self):
+        # Bregenz is a genuine triple-border point (Germany/Austria/
+        # Switzerland bboxes all match) - bbox order alone can never
+        # resolve this correctly for every user, so an explicit override
+        # must take priority over whatever the heuristic would otherwise
+        # pick, even if that other file is also downloaded.
+        (Path(self.primary_dir.name) / "germany.pmtiles").write_bytes(b"germany")
+        (Path(self.primary_dir.name) / "austria.pmtiles").write_bytes(b"austria")
+        result = map_widget_module._select_pmtiles_region(
+            47.5031, 9.7472, override_filename="austria.pmtiles"
+        )
+        self.assertEqual(result, Path(self.primary_dir.name) / "austria.pmtiles")
+
+    def test_override_falls_back_to_bbox_matching_when_file_not_downloaded(self):
+        # Naming a region that isn't actually on disk anywhere must not
+        # produce a path to a nonexistent file - it should behave exactly
+        # as if no override had been set at all.
+        (Path(self.primary_dir.name) / "germany.pmtiles").write_bytes(b"germany")
+        result = map_widget_module._select_pmtiles_region(
+            48.1372, 11.5756, override_filename="austria.pmtiles"
+        )
+        self.assertEqual(result, Path(self.primary_dir.name) / "germany.pmtiles")
+
+    def test_no_override_behaves_exactly_as_before(self):
+        (Path(self.primary_dir.name) / "germany.pmtiles").write_bytes(b"germany")
+        result = map_widget_module._select_pmtiles_region(48.1372, 11.5756, override_filename=None)
+        self.assertEqual(result, Path(self.primary_dir.name) / "germany.pmtiles")
+
 
 class PmtilesDirTest(unittest.TestCase):
     def setUp(self):

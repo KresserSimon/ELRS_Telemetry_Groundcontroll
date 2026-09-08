@@ -524,6 +524,16 @@ def build_story():
         "einzeln gegen echte Regions-Header verifiziert) - der reale Download-Ausschnitt kann "
         "dadurch am Rand geringfügig größer oder kleiner ausfallen als das jeweilige Land."
     ))
+    story.append(P(
+        "Die automatische Regionswahl anhand der Home-Position ist eine reine Bounding-Box-"
+        "Prüfung, keine echte Länder-Umriss-Erkennung - direkt an einer Dreiländer-Grenze (z. B. "
+        "Bodensee-Region: Deutschland, Österreich und die Schweiz überlappen sich dort alle drei) "
+        "kann das die \"falsche\" bereits heruntergeladene Region wählen, wodurch die Karte beim "
+        "Hineinzoomen in eine andere Richtung grau bleibt. Anzeige & Karte -&gt; Kartentyp -&gt; "
+        "Vektorkarten-Region legt für diesen Fall eine feste Region manuell fest (Automatisch "
+        "oder eine der bereits heruntergeladenen Länder); wie beim Kartentyp-Wechsel selbst wird "
+        "die Änderung erst nach einem Neustart der App wirksam."
+    ))
     story.append(P("7.2 No-Fly-Zones, Distanz-Warnung und OpenAIP", "h2"))
     story.append(P(
         "Alle Sperrzonen-Funktionen sitzen im Untermenü Anzeige & Karte -&gt; Sperrzonen (nicht "

@@ -69,7 +69,14 @@ def _pmtiles_search_dirs() -> List[Path]:
     return [primary] if bundled == primary else [primary, bundled]
 
 
-def _select_pmtiles_region(lat: Optional[float], lon: Optional[float]) -> Path:
+def _select_pmtiles_region(
+    lat: Optional[float], lon: Optional[float], override_filename: Optional[str] = None
+) -> Path:
+    if override_filename:
+        for directory in _pmtiles_search_dirs():
+            candidate = directory / override_filename
+            if candidate.is_file():
+                return candidate
     matches = [FALLBACK_REGION_FILE]
     if lat is not None and lon is not None:
         found = [
@@ -127,6 +134,7 @@ class MapWidget(QWebEngineView):
         home_lat: Optional[float] = None,
         home_lon: Optional[float] = None,
         renderer: str = "leaflet",
+        pmtiles_region_override: Optional[str] = None,
     ) -> None:
         super().__init__(parent)
         self._auto_center = True
@@ -134,6 +142,7 @@ class MapWidget(QWebEngineView):
         self._pending_position: Optional[tuple] = None
         self._renderer = renderer if renderer == "maplibre" else "leaflet"
         self._pmtiles_region_missing = False
+        self._pmtiles_region_override = pmtiles_region_override
 
         self._profile = _get_shared_profile()
         self.setPage(QWebEnginePage(self._profile, self))
@@ -183,13 +192,15 @@ class MapWidget(QWebEngineView):
         self.setHtml(get_map_html(**html_kwargs))
 
     def _load_maplibre_page(self, home_lat: Optional[float], home_lon: Optional[float]) -> None:
-        # No user-facing region picker yet (see the migration plan) - the
-        # region whose bbox contains the home position is opened
-        # automatically. A missing file degrades to a blank map (no crash)
+        # Bbox-based auto-selection is only a heuristic - plain rectangles
+        # routinely overlap at real borders, so a user-chosen override (see
+        # the "Vektorkarten-Region" submenu in main_window.py) always wins
+        # when it names a file that's actually downloaded. A missing file
+        # (override or auto-selected) degrades to a blank map (no crash)
         # rather than falling back to the Leaflet path, since silently
         # substituting a different renderer than the one explicitly
         # selected would be more confusing than an empty map.
-        region_path = _select_pmtiles_region(home_lat, home_lon)
+        region_path = _select_pmtiles_region(home_lat, home_lon, self._pmtiles_region_override)
         if region_path.is_file():
             self.pmtiles_bridge.open(region_path)
         else:

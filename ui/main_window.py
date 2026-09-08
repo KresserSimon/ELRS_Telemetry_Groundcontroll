@@ -58,6 +58,7 @@ from core.nfz import NoFlyZoneManager
 from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor, nearest_zone
 from core.openaip_config import load_openaip_config, save_openaip_config
 from core.openaip_import import OpenAipError, fetch_airspaces_geojson, geojson_to_zones
+from core.pmtiles_extract import KNOWN_REGIONS
 from core.model_profiles import ModelProfile, load_profiles, save_profiles
 from core.resources import resource_path
 from core.route import RouteManager
@@ -222,9 +223,11 @@ class MainWindow(QMainWindow):
 
         home_position = load_home_position()
         home_lat, home_lon = home_position if home_position is not None else (None, None)
+        self._pmtiles_region_override = self._ui_state.get("pmtiles_region_override")
         self._map = MapWidget(
             home_lat=home_lat, home_lon=home_lon,
             renderer=self._ui_state.get("map_renderer", DEFAULT_MAP_RENDERER),
+            pmtiles_region_override=self._pmtiles_region_override,
         )
         self._dashboard = Dashboard()
         self._dashboard.set_model_profile_names(list(load_profiles().keys()))
@@ -670,6 +673,39 @@ class MainWindow(QMainWindow):
         pmtiles_download_action = layer_menu.addAction("")
         self._i18n_actions.append((pmtiles_download_action, "menu_pmtiles_download"))
         pmtiles_download_action.triggered.connect(self._open_pmtiles_download_dialog)
+
+        # Bbox-based auto-selection (_select_pmtiles_region) is only a
+        # heuristic - plain rectangles routinely overlap at real borders
+        # (e.g. Bregenz matches Germany's, Austria's AND Switzerland's boxes
+        # at once), and declaration order then picks a file that may not
+        # actually cover where the drone is. This lets the user pin a
+        # specific already-downloaded region instead of relying on the
+        # heuristic; only regions actually present on disk are offered,
+        # since picking one that isn't downloaded would just show blank
+        # tiles like the bug this is fixing.
+        region_override_menu = layer_menu.addMenu("")
+        self._i18n_menus.append((region_override_menu, "menu_pmtiles_region_override"))
+        self._region_override_group = QActionGroup(self)
+        self._region_override_group.setExclusive(True)
+
+        auto_region_action = region_override_menu.addAction("")
+        self._i18n_actions.append((auto_region_action, "pmtiles_region_auto"))
+        auto_region_action.setCheckable(True)
+        auto_region_action.setData(None)
+        auto_region_action.setChecked(self._pmtiles_region_override is None)
+        self._region_override_group.addAction(auto_region_action)
+
+        downloaded_dir = pmtiles_dir()
+        for region in KNOWN_REGIONS:
+            if not (downloaded_dir / region.filename).is_file():
+                continue
+            region_action = region_override_menu.addAction("")
+            self._i18n_actions.append((region_action, region.label_key))
+            region_action.setCheckable(True)
+            region_action.setData(region.filename)
+            region_action.setChecked(self._pmtiles_region_override == region.filename)
+            self._region_override_group.addAction(region_action)
+        self._region_override_group.triggered.connect(self._on_pmtiles_region_selected)
 
         view_map_menu.addSeparator()
 
@@ -1402,6 +1438,19 @@ class MainWindow(QMainWindow):
         # Switching the map engine itself can't be done live - see the
         # migration plan.
         self._persist_ui_state()
+        QMessageBox.information(
+            self, i18n.tr("menu_map_layer"), i18n.tr("map_renderer_restart_required")
+        )
+
+    def _on_pmtiles_region_selected(self, action) -> None:
+        new_override = action.data()
+        if new_override == self._pmtiles_region_override:
+            return
+        self._pmtiles_region_override = new_override
+        self._persist_ui_state()
+        # MapWidget resolves its pmtiles region once, at construction time
+        # (see _load_maplibre_page) - there's no live-reload path, same
+        # restart requirement as switching the map engine itself.
         QMessageBox.information(
             self, i18n.tr("menu_map_layer"), i18n.tr("map_renderer_restart_required")
         )
@@ -2440,6 +2489,7 @@ class MainWindow(QMainWindow):
             "model_profile": self._dashboard.current_model_profile_name(),
             "altitude_track_time_unit": self._altitude_track_overlay.time_unit(),
             "map_renderer": "maplibre" if layer_action is not None and layer_action.data() == MAPLIBRE_LAYER_ID else "leaflet",
+            "pmtiles_region_override": self._pmtiles_region_override,
         }
 
     def _persist_ui_state(self, *_args) -> None:
