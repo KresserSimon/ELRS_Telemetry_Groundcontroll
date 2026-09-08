@@ -8,10 +8,16 @@ heatmap track. Only base-layer switching (setBaseLayer) stays a no-op stub
 - MapLibre uses a single fixed vector style here, not multiple swappable
 raster layers.
 
-Tile data comes from a local .pmtiles file via ui/pmtiles_bridge.py's
+Tile data comes from local .pmtiles files via ui/pmtiles_bridge.py's
 QWebChannel bridge (byte-range reads), not a URL scheme handler - the
 pmtiles JS library accepts a custom Source object in place of a URL, so no
 HTTP Range-header semantics are needed at all for local files.
+
+Every currently-downloaded region is opened and rendered simultaneously,
+layered as one MapLibre vector source + duplicated layer set per region
+(see buildMap()) - the region ordering (which one is drawn on top, i.e.
+wins wherever two regions' data overlaps at a shared border) is decided
+entirely on the Python side, see ui/map_widget.py:_list_downloaded_pmtiles().
 """
 
 from ui.maplibre_assets import BASEMAPS_JS, MAPLIBRE_CSS, MAPLIBRE_JS, PMTILES_JS
@@ -92,7 +98,9 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
   // Implements the pmtiles JS library's Source interface
   // (getBytes(offset, length) -> Promise<{data: ArrayBuffer}>, getKey())
   // by delegating byte reads to the Python-side PMTilesBridge QObject over
-  // QWebChannel instead of an HTTP(S) URL - see ui/pmtiles_bridge.py.
+  // QWebChannel instead of an HTTP(S) URL - see ui/pmtiles_bridge.py. One
+  // instance per open archive, distinguished by `key` (that archive's
+  // filename stem, e.g. "austria").
   class QtSource {
     constructor(bridge, key) {
       this.bridge = bridge;
@@ -105,7 +113,7 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
 
     getBytes(offset, length) {
       return new Promise((resolve) => {
-        this.bridge.read_range(offset, length, function (base64data) {
+        this.bridge.read_range(this.key, offset, length, function (base64data) {
           const binary = atob(base64data);
           const len = binary.length;
           const bytes = new Uint8Array(len);
@@ -116,14 +124,22 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     }
   }
 
-  function buildMap(key) {
+  // `keys` is priority-first (index 0 = the region that should win at a
+  // shared border - see ui/map_widget.py:_list_downloaded_pmtiles()). One
+  // MapLibre vector source + one cloned layer set per key, all registered
+  // with the SAME pmtiles.Protocol instance (it already keys its internal
+  // archive registry by name, so this needs no custom protocol/merge code
+  // at all) - layers are added in REVERSE priority order so the
+  // priority-1 region's layers end up last in the array, i.e. drawn on
+  // top. Wherever two downloaded regions' data genuinely overlaps (e.g.
+  // Austria/Germany/Switzerland near Lake Constance), the top one's
+  // pixels simply win; wherever only one region has data for a given
+  // tile, that one alone renders - no gaps, no "wrong region" picked.
+  function buildMap(keys) {
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", protocol.tile);
 
-    const source = new pmtiles.PMTiles(new QtSource(pmtilesBridge, key));
-    protocol.add(source);
-
-    var styleLayers = basemaps.layers("protomaps", basemaps.namedFlavor("light"), { lang: "en" });
+    var baseLayers = basemaps.layers("protomaps", basemaps.namedFlavor("light"), { lang: "en" });
     // Road/water labels use symbol-placement:'line' (text follows the line
     // direction) with no explicit text-rotation-alignment, which defaults
     // to rotating together with the map. That's fine for occasional,
@@ -135,10 +151,34 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     // 'viewport' alignment trades "labels follow road direction" for
     // "labels are always screen-upright and legible", the right call given
     // how often the bearing actually changes here.
-    styleLayers.forEach(function (layer) {
+    baseLayers.forEach(function (layer) {
       if (layer.type === "symbol" && layer.layout && "text-field" in layer.layout) {
         layer.layout["text-rotation-alignment"] = "viewport";
       }
+    });
+
+    var sources = {};
+    var layers = [];
+    keys.slice().reverse().forEach(function (key) {
+      const source = new pmtiles.PMTiles(new QtSource(pmtilesBridge, key));
+      protocol.add(source);
+
+      var sourceId = "protomaps_" + key;
+      sources[sourceId] = {
+        type: "vector",
+        url: "pmtiles://" + key,
+        attribution: "&copy; OpenStreetMap contributors"
+      };
+
+      // Deep-clone the shared layer template per region and rebind it to
+      // this region's own source - MapLibre requires globally-unique
+      // layer ids across the whole style, hence the per-key suffix.
+      var cloned = JSON.parse(JSON.stringify(baseLayers));
+      cloned.forEach(function (layer) {
+        layer.id = layer.id + "__" + key;
+        layer.source = sourceId;
+      });
+      layers = layers.concat(cloned);
     });
 
     map = new maplibregl.Map({
@@ -149,14 +189,8 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
         version: 8,
         glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
         sprite: "https://protomaps.github.io/basemaps-assets/sprites/v4/light",
-        sources: {
-          protomaps: {
-            type: "vector",
-            url: "pmtiles://" + key,
-            attribution: "&copy; OpenStreetMap contributors"
-          }
-        },
-        layers: styleLayers
+        sources: sources,
+        layers: layers
       }
     });
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
@@ -165,12 +199,13 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
 
   function initMapWhenReady() {
     if (!pmtilesBridge || map) { return; }
-    pmtilesBridge.get_key(function (key) {
-      if (!key) {
-        console.error("PMTilesBridge has no .pmtiles file open - nothing to render.");
+    pmtilesBridge.get_keys_json(function (keysJson) {
+      const keys = JSON.parse(keysJson);
+      if (!keys.length) {
+        console.error("PMTilesBridge has no .pmtiles files open - nothing to render.");
         return;
       }
-      buildMap(key);
+      buildMap(keys);
     });
   }
 

@@ -4,40 +4,14 @@ import unittest
 from pathlib import Path
 
 import ui.map_widget as map_widget_module
-from ui.map_widget import _select_pmtiles_region, pmtiles_dir
+from ui.map_widget import pmtiles_dir
 
 
-class SelectPmtilesRegionTest(unittest.TestCase):
-    def test_munich_selects_germany(self):
-        self.assertEqual(_select_pmtiles_region(48.1372, 11.5756), pmtiles_dir() / "germany.pmtiles")
-
-    def test_vienna_selects_austria(self):
-        self.assertEqual(_select_pmtiles_region(48.2082, 16.3738), pmtiles_dir() / "austria.pmtiles")
-
-    def test_bern_selects_switzerland(self):
-        # Not Zurich: at 47.3769 it falls inside Germany's bbox too (these
-        # are plain rectangles, not real country outlines, so border-area
-        # overlap is expected and resolved by fixed check order) - Bern is
-        # comfortably south of Germany's bbox and unambiguous.
-        self.assertEqual(_select_pmtiles_region(46.9480, 7.4474), pmtiles_dir() / "switzerland.pmtiles")
-
-    def test_rome_selects_italy(self):
-        self.assertEqual(_select_pmtiles_region(41.9028, 12.4964), pmtiles_dir() / "italy.pmtiles")
-
-    def test_no_home_position_falls_back_to_germany(self):
-        self.assertEqual(_select_pmtiles_region(None, None), pmtiles_dir() / "germany.pmtiles")
-
-    def test_position_outside_all_regions_falls_back_to_germany(self):
-        # Tokyo - nowhere near any of the four extracted regions.
-        self.assertEqual(_select_pmtiles_region(35.6762, 139.6503), pmtiles_dir() / "germany.pmtiles")
-
-
-class SelectPmtilesRegionFallbackTest(unittest.TestCase):
-    """A region file can live in pmtiles_dir() (the writable folder the
-    download dialog uses) or under a bundled assets/pmtiles next to the
-    exe (the assets/ convention already used for the icon/logo, which
-    some people place region files under by hand instead) - both must be
-    searched, primary location first."""
+class ListDownloadedPmtilesTest(unittest.TestCase):
+    """All currently-downloaded regions load simultaneously and are layered
+    on the map (see maplibre_template.py:buildMap()) - _list_downloaded_pmtiles()
+    just decides the order (priority region first, i.e. drawn on top), it
+    no longer picks a single "the" region."""
 
     def setUp(self):
         self._real_pmtiles_dir = map_widget_module.pmtiles_dir
@@ -53,58 +27,57 @@ class SelectPmtilesRegionFallbackTest(unittest.TestCase):
         self.primary_dir.cleanup()
         self.bundled_dir.cleanup()
 
+    def _write(self, directory: str, filename: str, size: int) -> Path:
+        path = Path(directory) / filename
+        path.write_bytes(b"x" * size)
+        return path
+
+    def test_nothing_downloaded_returns_empty_list(self):
+        self.assertEqual(map_widget_module._list_downloaded_pmtiles(), [])
+
+    def test_single_downloaded_region_is_returned(self):
+        path = self._write(self.primary_dir.name, "germany.pmtiles", 100)
+        self.assertEqual(map_widget_module._list_downloaded_pmtiles(), [path])
+
+    def test_default_priority_is_austria_regardless_of_size(self):
+        # Austria is this app's primary use case (see DEFAULT_PRIORITY_REGION)
+        # - it must be drawn on top even though it's the smallest file here,
+        # i.e. its priority isn't just an accident of the size-based
+        # ordering used for everything else.
+        austria = self._write(self.primary_dir.name, "austria.pmtiles", 10)
+        germany = self._write(self.primary_dir.name, "germany.pmtiles", 1_000_000)
+        self.assertEqual(map_widget_module._list_downloaded_pmtiles(), [austria, germany])
+
+    def test_non_priority_regions_ordered_by_ascending_size(self):
+        big = self._write(self.primary_dir.name, "germany.pmtiles", 3000)
+        small = self._write(self.primary_dir.name, "switzerland.pmtiles", 100)
+        medium = self._write(self.primary_dir.name, "italy.pmtiles", 1000)
+        self.assertEqual(map_widget_module._list_downloaded_pmtiles(), [small, medium, big])
+
+    def test_explicit_priority_filename_overrides_the_austria_default(self):
+        austria = self._write(self.primary_dir.name, "austria.pmtiles", 10)
+        switzerland = self._write(self.primary_dir.name, "switzerland.pmtiles", 3000)
+        result = map_widget_module._list_downloaded_pmtiles(priority_filename="switzerland.pmtiles")
+        self.assertEqual(result, [switzerland, austria])
+
+    def test_priority_filename_not_downloaded_falls_back_to_size_order(self):
+        germany = self._write(self.primary_dir.name, "germany.pmtiles", 100)
+        result = map_widget_module._list_downloaded_pmtiles(priority_filename="austria.pmtiles")
+        self.assertEqual(result, [germany])
+
     def test_prefers_the_primary_writable_directory_when_present_in_both(self):
-        (Path(self.primary_dir.name) / "germany.pmtiles").write_bytes(b"primary")
-        (Path(self.bundled_dir.name) / "germany.pmtiles").write_bytes(b"bundled")
-        result = map_widget_module._select_pmtiles_region(48.1372, 11.5756)
-        self.assertEqual(result, Path(self.primary_dir.name) / "germany.pmtiles")
+        primary_copy = self._write(self.primary_dir.name, "germany.pmtiles", 100)
+        self._write(self.bundled_dir.name, "germany.pmtiles", 100)
+        self.assertEqual(map_widget_module._list_downloaded_pmtiles(), [primary_copy])
 
     def test_falls_back_to_the_bundled_assets_directory(self):
-        (Path(self.bundled_dir.name) / "germany.pmtiles").write_bytes(b"bundled")
-        result = map_widget_module._select_pmtiles_region(48.1372, 11.5756)
-        self.assertEqual(result, Path(self.bundled_dir.name) / "germany.pmtiles")
+        bundled_copy = self._write(self.bundled_dir.name, "germany.pmtiles", 100)
+        self.assertEqual(map_widget_module._list_downloaded_pmtiles(), [bundled_copy])
 
-    def test_missing_everywhere_points_at_the_primary_directory(self):
-        result = map_widget_module._select_pmtiles_region(48.1372, 11.5756)
-        self.assertEqual(result, Path(self.primary_dir.name) / "germany.pmtiles")
-
-    def test_prefers_downloaded_region_among_overlapping_bboxes(self):
-        # Bregenz sits in the Lake Constance border area and falls inside
-        # both Germany's and Austria's bbox (see KNOWN_REGIONS) - someone
-        # who only downloaded Austria should get that file, not a
-        # "missing" prompt for Germany just because Germany is checked
-        # first.
-        (Path(self.primary_dir.name) / "austria.pmtiles").write_bytes(b"austria")
-        result = map_widget_module._select_pmtiles_region(47.5031, 9.7472)
-        self.assertEqual(result, Path(self.primary_dir.name) / "austria.pmtiles")
-
-    def test_override_wins_even_when_another_bbox_match_is_downloaded(self):
-        # Bregenz is a genuine triple-border point (Germany/Austria/
-        # Switzerland bboxes all match) - bbox order alone can never
-        # resolve this correctly for every user, so an explicit override
-        # must take priority over whatever the heuristic would otherwise
-        # pick, even if that other file is also downloaded.
-        (Path(self.primary_dir.name) / "germany.pmtiles").write_bytes(b"germany")
-        (Path(self.primary_dir.name) / "austria.pmtiles").write_bytes(b"austria")
-        result = map_widget_module._select_pmtiles_region(
-            47.5031, 9.7472, override_filename="austria.pmtiles"
-        )
-        self.assertEqual(result, Path(self.primary_dir.name) / "austria.pmtiles")
-
-    def test_override_falls_back_to_bbox_matching_when_file_not_downloaded(self):
-        # Naming a region that isn't actually on disk anywhere must not
-        # produce a path to a nonexistent file - it should behave exactly
-        # as if no override had been set at all.
-        (Path(self.primary_dir.name) / "germany.pmtiles").write_bytes(b"germany")
-        result = map_widget_module._select_pmtiles_region(
-            48.1372, 11.5756, override_filename="austria.pmtiles"
-        )
-        self.assertEqual(result, Path(self.primary_dir.name) / "germany.pmtiles")
-
-    def test_no_override_behaves_exactly_as_before(self):
-        (Path(self.primary_dir.name) / "germany.pmtiles").write_bytes(b"germany")
-        result = map_widget_module._select_pmtiles_region(48.1372, 11.5756, override_filename=None)
-        self.assertEqual(result, Path(self.primary_dir.name) / "germany.pmtiles")
+    def test_files_from_both_directories_are_combined(self):
+        primary_copy = self._write(self.primary_dir.name, "austria.pmtiles", 10)
+        bundled_copy = self._write(self.bundled_dir.name, "germany.pmtiles", 100)
+        self.assertEqual(map_widget_module._list_downloaded_pmtiles(), [primary_copy, bundled_copy])
 
 
 class PmtilesDirTest(unittest.TestCase):

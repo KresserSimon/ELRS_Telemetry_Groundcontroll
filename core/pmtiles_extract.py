@@ -123,15 +123,16 @@ class RegionSpec:
 # territories, e.g. France/Portugal/Spain/Denmark/Norway) - not
 # authoritative, and these are plain rectangles rather than real country
 # outlines regardless, so border-area overlap between neighbors is
-# already expected and resolved by fixed check order (see
-# _select_pmtiles_region()). Full country list added on request, but
-# deliberately without downloading/verifying every single one - only
-# DE/AT/CH/IT have actually been extracted and confirmed to work end to
-# end so far.
+# expected - every downloaded region loads simultaneously and is layered
+# on the map rather than picking one (see
+# ui/map_widget.py:_list_downloaded_pmtiles()), so overlap is harmless.
+# Full country list added on request, but deliberately without
+# downloading/verifying every single one - only DE/AT/CH/IT have actually
+# been extracted and confirmed to work end to end so far.
 #
-# The single source of truth for both the auto-selected local file
-# (ui/map_widget.py's _select_pmtiles_region()) and the manual "download a
-# region" dialog (ui/pmtiles_download_dialog.py).
+# The single source of truth for both the loaded-on-the-map files
+# (ui/map_widget.py's _list_downloaded_pmtiles()) and the manual "download
+# a region" dialog (ui/pmtiles_download_dialog.py).
 KNOWN_REGIONS: Tuple[RegionSpec, ...] = (
     RegionSpec("germany.pmtiles", "pmtilesregion_germany", 5.87, 47.27, 15.04, 55.06),
     RegionSpec("austria.pmtiles", "pmtilesregion_austria", 9.53, 46.37, 17.16, 49.02),

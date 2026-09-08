@@ -490,9 +490,12 @@ def build_story():
         "Kartentyp-Wechsel selbst braucht einen Neustart der App."
     ))
     story.append(P(
-        "Kartendaten für die Vektorkarte kommen aus lokalen Regions-Dateien (automatisch anhand "
-        "der Home-Position ausgewählt, siehe auch Abschnitt 5 zur Offline-Nutzung). Diese Dateien "
-        "lassen sich direkt in der App herunterladen: Anzeige & Karte -&gt; Kartentyp -&gt; "
+        "Kartendaten für die Vektorkarte kommen aus lokalen Regions-Dateien (siehe auch Abschnitt "
+        "5 zur Offline-Nutzung). Alle bereits heruntergeladenen Regionen werden gleichzeitig "
+        "geladen und übereinandergelegt - es muss also nicht mehr eine \"passende\" Region für die "
+        "aktuelle Position ausgewählt werden, an einer Landesgrenze rendern einfach beide Länder "
+        "nahtlos nebeneinander. Diese Dateien lassen sich direkt in der App herunterladen: "
+        "Anzeige & Karte -&gt; Kartentyp -&gt; "
         "Vektorkarten-Region herunterladen... öffnet einen Dialog mit einer Länderliste (Ankreuz"
         "feld pro Land, Suchfeld, Alle auswählen/Auswahl aufheben) - aktuell knapp 38 europäische "
         "Länder/Regionen, von Portugal bis in die Ukraine, von Island bis Griechenland. Mehrere "
@@ -534,14 +537,15 @@ def build_story():
         "dadurch am Rand geringfügig größer oder kleiner ausfallen als das jeweilige Land."
     ))
     story.append(P(
-        "Die automatische Regionswahl anhand der Home-Position ist eine reine Bounding-Box-"
-        "Prüfung, keine echte Länder-Umriss-Erkennung - direkt an einer Dreiländer-Grenze (z. B. "
-        "Bodensee-Region: Deutschland, Österreich und die Schweiz überlappen sich dort alle drei) "
-        "kann das die \"falsche\" bereits heruntergeladene Region wählen, wodurch die Karte beim "
-        "Hineinzoomen in eine andere Richtung grau bleibt. Anzeige & Karte -&gt; Kartentyp -&gt; "
-        "Vektorkarten-Region legt für diesen Fall eine feste Region manuell fest (Automatisch "
-        "oder eine der bereits heruntergeladenen Länder); wie beim Kartentyp-Wechsel selbst wird "
-        "die Änderung erst nach einem Neustart der App wirksam."
+        "Da alle heruntergeladenen Regionen gleichzeitig geladen und übereinandergelegt werden, "
+        "muss an einer Landesgrenze (z. B. Bodensee-Region: Deutschland, Österreich und die "
+        "Schweiz grenzen dort direkt aneinander) entschieden werden, welche Region \"oben liegt\", "
+        "falls sich zwei Regionen an der Grenze tatsächlich überschneiden. Anzeige & Karte -&gt; "
+        "Kartentyp -&gt; Vektorkarten-Region legt diese Priorität fest (Automatisch = Österreich "
+        "zuerst, falls heruntergeladen, sonst keine feste Priorität; oder eine der bereits "
+        "heruntergeladenen Länder als feste oberste Ebene). Alle übrigen heruntergeladenen "
+        "Regionen darunter werden nach Dateigröße aufsteigend gestapelt. Wie beim "
+        "Kartentyp-Wechsel selbst wird die Änderung erst nach einem Neustart der App wirksam."
     ))
     story.append(P("7.2 No-Fly-Zones, Distanz-Warnung und OpenAIP", "h2"))
     story.append(P(
@@ -598,9 +602,9 @@ def build_story():
         "(nur bei laufender Telemetrie verfügbar) bietet der Dialog \"Standort per IP ermitteln\": "
         "eine grobe, Stadt-genaue Positionsbestimmung über einen Online-Dienst, ganz ohne "
         "GPS-Fix - praktisch fürs einmalige Einrichten zuhause. Da diese Positionsangabe auch "
-        "bestimmt, welche Vektorkarten-Region automatisch geladen wird (siehe Abschnitt 7.1), "
-        "lohnt es sich, hier den tatsächlichen Wohn-/Startort einzutragen, statt es beim "
-        "App-Standardwert zu belassen."
+        "bestimmt, wo die Karte beim Start zentriert ist (siehe Abschnitt 7.1), lohnt es sich, "
+        "hier den tatsächlichen Wohn-/Startort einzutragen, statt es beim App-Standardwert zu "
+        "belassen."
     ))
     story.append(P(
         "Eine dritte, ebenfalls unabhängige Position ist die eigene Bodenstations-Position "
@@ -725,8 +729,8 @@ def build_story():
     story.append(P("12.3 Anzeige & Karte", "h2"))
     story.extend(bullets([
         "Kartentyp -&gt; Vektorkarte (MapLibre, Standard) / OpenStreetMap / Satellit (Esri) "
-        "(Neustart bei Wechsel erforderlich) sowie Vektorkarten-Region herunterladen... - siehe "
-        "Abschnitt 7.1.",
+        "(Neustart bei Wechsel erforderlich) sowie Vektorkarten-Region herunterladen... und "
+        "Vektorkarten-Region (Grenz-Priorität: Automatisch/Land) - siehe Abschnitt 7.1.",
         "Sperrzonen (Untermenü): Sperrzonen laden... / Sperrzonen anzeigen, Distanz-Warnung "
         "aktivieren (50m), OpenAIP-Einstellungen... / OpenAIP Zonen laden, "
         "Österreich-Flugbeschränkungszonen laden (Austro Control) - siehe Abschnitt 7.2.",

@@ -19,7 +19,6 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from core import i18n
 from core.nfz import NoFlyZone
-from core.pmtiles_extract import FALLBACK_REGION_FILE, KNOWN_REGIONS
 from core.resources import resource_path
 from core.route import Waypoint
 from ui.map_template import get_map_html
@@ -34,9 +33,10 @@ OVERLAY_MARGIN = 10
 # Real region extracts are multi-GB (see the migration plan) and are never
 # bundled into the .exe by the build itself - either downloaded in-app
 # (ui/pmtiles_download_dialog.py, via core/pmtiles_extract.py) or placed
-# manually. _select_pmtiles_region() picks automatically based on the
-# drone's home position, using each file's real bounding box (read
-# directly from its own header via the `pmtiles show` CLI, not guessed).
+# manually. _list_downloaded_pmtiles() opens every region actually present
+# on disk simultaneously (see MapWidget._load_maplibre_page) rather than
+# picking a single "best" one, so a shared border between two downloaded
+# countries just renders both without gaps.
 def pmtiles_dir() -> Path:
     if getattr(sys, "frozen", False):
         # A packaged .exe ships no region files at all (see the migration
@@ -69,35 +69,29 @@ def _pmtiles_search_dirs() -> List[Path]:
     return [primary] if bundled == primary else [primary, bundled]
 
 
-def _select_pmtiles_region(
-    lat: Optional[float], lon: Optional[float], override_filename: Optional[str] = None
-) -> Path:
-    if override_filename:
-        for directory in _pmtiles_search_dirs():
-            candidate = directory / override_filename
-            if candidate.is_file():
-                return candidate
-    matches = [FALLBACK_REGION_FILE]
-    if lat is not None and lon is not None:
-        found = [
-            region.filename
-            for region in KNOWN_REGIONS
-            if region.min_lon <= lon <= region.max_lon and region.min_lat <= lat <= region.max_lat
-        ]
-        if found:
-            matches = found
-    # These are plain rectangles, not real country outlines, so border
-    # areas routinely fall inside more than one country's box at once
-    # (e.g. Lake Constance matches both Germany's and Austria's) - among
-    # every bbox match, prefer whichever one is already downloaded, in
-    # bbox-check order, rather than always taking the first bbox match
-    # regardless of what's actually on disk.
-    for filename in matches:
-        for directory in _pmtiles_search_dirs():
-            candidate = directory / filename
-            if candidate.is_file():
-                return candidate
-    return pmtiles_dir() / matches[0]  # none downloaded yet - point at the primary bbox match
+DEFAULT_PRIORITY_REGION = "austria.pmtiles"
+
+
+def _list_downloaded_pmtiles(priority_filename: Optional[str] = None) -> List[Path]:
+    """Every *.pmtiles file actually present on disk, ordered priority-first
+    (index 0 = drawn on top in the MapLibre style - see buildMap() in
+    maplibre_template.py): `priority_filename` if given and downloaded,
+    else DEFAULT_PRIORITY_REGION (Austria, this app's primary use case) if
+    that's downloaded, then every other downloaded region ordered by
+    ascending file size as a simple, deterministic proxy for "loads
+    fastest" (smaller archives have less directory data to search per tile
+    lookup). A file present under more than one search dir (see
+    _pmtiles_search_dirs()) counts once, using the first dir's copy."""
+    priority = priority_filename or DEFAULT_PRIORITY_REGION
+    seen: dict[str, Path] = {}
+    for directory in _pmtiles_search_dirs():
+        if not directory.is_dir():
+            continue
+        for path in directory.glob("*.pmtiles"):
+            seen.setdefault(path.name, path)
+    priority_files = [p for p in seen.values() if p.name == priority]
+    rest = sorted((p for p in seen.values() if p.name != priority), key=lambda p: p.stat().st_size)
+    return priority_files + rest
 
 
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -134,7 +128,7 @@ class MapWidget(QWebEngineView):
         home_lat: Optional[float] = None,
         home_lon: Optional[float] = None,
         renderer: str = "leaflet",
-        pmtiles_region_override: Optional[str] = None,
+        pmtiles_priority_region: Optional[str] = None,
     ) -> None:
         super().__init__(parent)
         self._auto_center = True
@@ -142,7 +136,7 @@ class MapWidget(QWebEngineView):
         self._pending_position: Optional[tuple] = None
         self._renderer = renderer if renderer == "maplibre" else "leaflet"
         self._pmtiles_region_missing = False
-        self._pmtiles_region_override = pmtiles_region_override
+        self._pmtiles_priority_region = pmtiles_priority_region
 
         self._profile = _get_shared_profile()
         self.setPage(QWebEnginePage(self._profile, self))
@@ -192,17 +186,19 @@ class MapWidget(QWebEngineView):
         self.setHtml(get_map_html(**html_kwargs))
 
     def _load_maplibre_page(self, home_lat: Optional[float], home_lon: Optional[float]) -> None:
-        # Bbox-based auto-selection is only a heuristic - plain rectangles
-        # routinely overlap at real borders, so a user-chosen override (see
-        # the "Vektorkarten-Region" submenu in main_window.py) always wins
-        # when it names a file that's actually downloaded. A missing file
-        # (override or auto-selected) degrades to a blank map (no crash)
-        # rather than falling back to the Leaflet path, since silently
-        # substituting a different renderer than the one explicitly
-        # selected would be more confusing than an empty map.
-        region_path = _select_pmtiles_region(home_lat, home_lon, self._pmtiles_region_override)
-        if region_path.is_file():
-            self.pmtiles_bridge.open(region_path)
+        # Every downloaded region loads simultaneously and gets layered in
+        # the MapLibre style (see buildMap() in maplibre_template.py) -
+        # there's no single "which region covers the home position" pick
+        # anymore, so a shared border between two downloaded countries
+        # (e.g. Austria/Germany/Switzerland near Lake Constance) just
+        # renders both without gaps instead of guessing one. No regions
+        # downloaded at all degrades to a blank map (no crash) rather than
+        # falling back to the Leaflet path, since silently substituting a
+        # different renderer than the one explicitly selected would be
+        # more confusing than an empty map.
+        region_paths = _list_downloaded_pmtiles(self._pmtiles_priority_region)
+        if region_paths:
+            self.pmtiles_bridge.open_all(region_paths)
         else:
             self._pmtiles_region_missing = True
         html_kwargs = {
