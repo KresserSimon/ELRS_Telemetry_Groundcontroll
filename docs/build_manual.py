@@ -508,6 +508,15 @@ def build_story():
         "direkt im Windows-Explorer."
     ))
     story.append(P(
+        "Ein Importieren...-Knopf daneben erlaubt es, eine bereits vorhandene .pmtiles-Datei "
+        "(z. B. von einem anderen Rechner oder einem USB-Stick übertragen) direkt einzubinden, "
+        "ohne sie erneut herunterzuladen. Trägt die gewählte Datei bereits den Namen einer der "
+        "unterstützten Regionen (z. B. austria.pmtiles), wird sie automatisch zugeordnet; "
+        "andernfalls fragt ein kleiner Dialog, für welches Land die Datei gedacht ist. In beiden "
+        "Fällen landet die Datei am selben Speicherort wie bei einem regulären Download und wird "
+        "sofort in der Länderliste als heruntergeladen markiert."
+    ))
+    story.append(P(
         "Sowohl beim Start aus dem Quellcode (python main.py) als auch in der kompilierten .exe "
         "funktioniert die Vektorkarte identisch, sobald eine Region heruntergeladen wurde (siehe "
         "auch Abschnitt 14). Die neu hinzugekommenen europäischen Regionen jenseits von "

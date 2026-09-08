@@ -9,7 +9,9 @@ stay well within Protomaps' fair-use expectations for the free daily build.
 """
 from __future__ import annotations
 
+import shutil
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import Qt, QUrl
@@ -18,7 +20,9 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -63,11 +67,14 @@ class PMTilesDownloadDialog(QDialog):
         select_none_btn.clicked.connect(lambda: self._set_all_checked(False))
         open_folder_btn = QPushButton(i18n.tr("pmtilesdownload_open_folder_btn"))
         open_folder_btn.clicked.connect(self._open_folder)
+        import_btn = QPushButton(i18n.tr("pmtilesdownload_import_btn"))
+        import_btn.clicked.connect(self._import_pmtiles)
         select_row = QHBoxLayout()
         select_row.addWidget(select_all_btn)
         select_row.addWidget(select_none_btn)
         select_row.addStretch(1)
         select_row.addWidget(open_folder_btn)
+        select_row.addWidget(import_btn)
 
         self._folder_label = QLabel(i18n.tr("pmtilesdownload_folder_label", folder=str(pmtiles_dir())))
         self._folder_label.setWordWrap(True)
@@ -117,6 +124,58 @@ class PMTilesDownloadDialog(QDialog):
         folder = pmtiles_dir()
         folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def _import_pmtiles(self) -> None:
+        """Copy an already-downloaded .pmtiles file (e.g. transferred from
+        another machine or a USB stick) into pmtiles_dir(), matching it to a
+        known region by filename - falling back to asking the user which
+        country it is if the filename doesn't match any known region."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, i18n.tr("pmtilesdownload_import_dialog_title"), str(pmtiles_dir()),
+            "PMTiles (*.pmtiles)",
+        )
+        if not path:
+            return
+
+        source = Path(path)
+        region = next(
+            (r for r in KNOWN_REGIONS if r.filename.lower() == source.name.lower()), None
+        )
+        if region is None:
+            region = self._ask_import_target_region()
+            if region is None:
+                return
+
+        destination = pmtiles_dir() / region.filename
+        if destination.exists() and destination.resolve() != source.resolve():
+            confirm = QMessageBox.question(
+                self, i18n.tr("pmtilesdownload_dialog_title"),
+                i18n.tr("pmtilesdownload_confirm_overwrite", filename=region.filename),
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.resolve() != source.resolve():
+                shutil.copyfile(source, destination)
+        except OSError as exc:
+            self._status_label.setText(i18n.tr("pmtilesdownload_status_failed", error=str(exc)))
+            return
+
+        self._refresh_item_text(region)
+        self._status_label.setText(i18n.tr("pmtilesdownload_status_done", path=str(destination)))
+
+    def _ask_import_target_region(self) -> Optional[RegionSpec]:
+        names = [i18n.tr(region.label_key) for region in KNOWN_REGIONS]
+        choice, ok = QInputDialog.getItem(
+            self, i18n.tr("pmtilesdownload_import_pick_region_title"),
+            i18n.tr("pmtilesdownload_import_pick_region_label"), names, 0, False,
+        )
+        if not ok:
+            return None
+        index = names.index(choice)
+        return KNOWN_REGIONS[index]
 
     def _downloaded_timestamp(self, region: RegionSpec) -> Optional[str]:
         path = pmtiles_dir() / region.filename
