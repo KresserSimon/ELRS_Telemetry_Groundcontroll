@@ -3,6 +3,45 @@
 Status: Planung, kein Code geschrieben. Referenzen sind `datei:zeile` Stand zum
 Zeitpunkt der Analyse.
 
+## Aktueller Stand (2026-09-08)
+
+Die ursprüngliche Planung unten ist inzwischen zu weiten Teilen umgesetzt.
+Kurzüberblick, welche Phase/Priorität wo steht (Details wie gehabt in den
+jeweiligen Abschnitten):
+
+- **Phase 1 (P1) — vollständig umgesetzt**: Eigener Geofence
+  (`core/geofence.py`, `core/geofence_monitor.py`), Heimkehr-Energiebudget
+  (`core/energy_budget.py`), Modell-verloren-Modus
+  (`core/lost_model_monitor.py`).
+- **Phase 2 (P2) — vollständig umgesetzt**: STATUSTEXT-Konsole
+  (`ui/statustext_console.py`), Log-Replay (`telemetry/replay_worker.py`,
+  `ui/replay_transport_overlay.py`), Position der Bodenstation
+  (`core/gs_position.py`), MAVLink-Rückkanal (Mission Upload/Download, RTH,
+  Moduswechsel - alle vier Menüpunkte in `ui/main_window.py`), Erweiterter
+  Modell-Editor (`core/model_profiles.py`, `ui/model_profile_dialog.py`).
+- **P3 — teilweise umgesetzt**: der PMTiles-Fix ist nicht nur behoben,
+  sondern deutlich über die ursprüngliche Skizze hinaus ausgebaut - echter
+  Download-Dialog für ca. 38 Regionen direkt aus der App
+  (`ui/pmtiles_download_dialog.py`), Import bereits vorhandener
+  `.pmtiles`-Dateien per Knopf, und eine manuelle Regions-Übersteuerung
+  (Anzeige & Karte -&gt; Kartentyp -&gt; Vektorkarten-Region) für
+  Mehrländer-Grenzfälle, bei denen die automatische Bounding-Box-Auswahl
+  die falsche bereits heruntergeladene Region trifft. Die Windschätzung aus
+  Ground-/Airspeed-Differenz ist weiterhin offen.
+- **P4 — zurückgestellt**: unverändert nichts umgesetzt (Auto-Reconnect/
+  Watchdog, zusätzliche Sprachwarnungen, HDOP/Fix-Typ, Distanzringe,
+  OSD-Export, Metrisch/Imperial-Umschaltung).
+- **P5 (Telemetrie-Variablen-Editor) und P6 (EdgeTX-Warntöne)** — bereits in
+  ihren jeweiligen Abschnitten als umgesetzt markiert, weiterhin aktuell.
+- **Zusätzlich umgesetzt, ursprünglich nicht Teil dieses Plans**:
+  Österreichische Flugbeschränkungszonen-Import (Austro Control/ACG,
+  `core/acg_nfz_import.py`, gebündelte Zonendaten), diverse OneDrive-
+  Build-/Locking-Robustheitsfixes für den `.exe`-Build-Prozess (kein
+  Feature, sondern Infrastruktur).
+
+Insgesamt sind damit alle P1/P2-Punkte sowie P5/P6 fertig; von P3 fehlt nur
+noch die Windschätzung, P4 ist komplett offen und bewusst zurückgestellt.
+
 ## Schritt 1 — Bestehende Architektur
 
 ### Telemetriefluss
