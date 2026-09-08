@@ -97,7 +97,7 @@ TOC_ENTRIES = [
     "4. Verbindung zur Telemetrie herstellen (inkl. Antennen-Tracker-Ausgabe, Modell-Profile)",
     "5. Offline-Nutzung (Longrange ohne Internet)",
     "6. Die Benutzeroberfläche",
-    "7. Kartenoptionen (Vektorkarte als Standard, Satellitenbild/OpenStreetMap, Sperrzonen inkl. OpenAIP, Rechtsklick-Menü, Home-Position)",
+    "7. Kartenoptionen (Vektorkarte als Standard, Satellitenbild/OpenStreetMap, Sperrzonen inkl. OpenAIP und Austro Control, Rechtsklick-Menü, Home-Position)",
     "8. Route/Wegpunkte planen, Höhenprofil, Grid-Muster, INAV-Mission-Export",
     "9. Flugpfad-Aufzeichnung (Start/Pause/Export)",
     "10. Fluglog (CSV-Aufzeichnung)",
@@ -137,7 +137,7 @@ def build_story():
     story.append(P("Ein schlanker Ground-Control-Bildschirm für", "subtitle"))
     story.append(P("ExpressLRS (ELRS) Modelle", "subtitle"))
     story.append(Spacer(1, 10 * mm))
-    story.append(P("Stand: August 2026", "meta"))
+    story.append(P("Stand: September 2026", "meta"))
     story.append(P("github.com/KresserSimon/ELRS_Telemetry_Groundcontroll", "meta"))
     story.append(PageBreak())
 
@@ -501,6 +501,13 @@ def build_story():
         "Menüpunkt herunterladen."
     ))
     story.append(P(
+        "Die Länderliste im Download-Dialog zeigt zu jedem bereits heruntergeladenen Land direkt "
+        "neben dem Namen ein Häkchen mit dem Downloaddatum an, sodass auf einen Blick erkennbar "
+        "ist, welche Regionen schon lokal vorliegen. Ein Ordner-öffnen-Knopf im selben Dialog "
+        "öffnet den Speicherort der Regions-Dateien (%USERPROFILE%\\.elrs_ground_station\\pmtiles\\) "
+        "direkt im Windows-Explorer."
+    ))
+    story.append(P(
         "Sowohl beim Start aus dem Quellcode (python main.py) als auch in der kompilierten .exe "
         "funktioniert die Vektorkarte identisch, sobald eine Region heruntergeladen wurde (siehe "
         "auch Abschnitt 14). Die neu hinzugekommenen europäischen Regionen jenseits von "
@@ -530,6 +537,15 @@ def build_story():
         "gewünschten Luftraumtypen (z. B. CTR, Restricted, Prohibited). OpenAIP Zonen laden lädt "
         "anschließend automatisch passende Luftraumdaten für die aktuelle Home-Position herunter "
         "und zeigt sie wie manuell importierte Sperrzonen an."
+    ))
+    story.append(P(
+        "Österreich-Flugbeschränkungszonen laden (Austro Control) lädt ohne Dateiauswahl direkt "
+        "den mit der App mitgelieferten, offiziellen Datensatz der Austro Control (UAS-Zonen "
+        "gemäß EU-Durchführungsverordnung, Stand des Downloads: September 2026). Genehmigungs"
+        "pflichtige Zonen, bedingt nutzbare Zonen und echte Flugverbote werden jeweils mit "
+        "passendem Namenspräfix (Genehmigungspflichtig / Flugplatzzone / Flugverbot) übernommen; "
+        "reine Modellfluggebiete (ohne Einschränkung) werden bewusst nicht angezeigt, da sie "
+        "keine echte Sperrzone darstellen, sondern nur auf vermehrten Drohnenverkehr hinweisen."
     ))
     story.append(P("7.3 Rechtsklick-Menü", "h2"))
     story.append(P("Ein Rechtsklick auf die Karte öffnet - unabhängig vom Wegpunkt-Modus - ein Kontextmenü mit folgenden Punkten:"))
@@ -684,7 +700,8 @@ def build_story():
         "(Neustart bei Wechsel erforderlich) sowie Vektorkarten-Region herunterladen... - siehe "
         "Abschnitt 7.1.",
         "Sperrzonen (Untermenü): Sperrzonen laden... / Sperrzonen anzeigen, Distanz-Warnung "
-        "aktivieren (50m), OpenAIP-Einstellungen... / OpenAIP Zonen laden - siehe Abschnitt 7.2.",
+        "aktivieren (50m), OpenAIP-Einstellungen... / OpenAIP Zonen laden, "
+        "Österreich-Flugbeschränkungszonen laden (Austro Control) - siehe Abschnitt 7.2.",
         "Auto-Center, Drohnenrichtung/Norden oben, Aktuelle Position anspringen (Strg+Pos1).",
         "Wegpunkt-Editor anzeigen, Karten-Performance..., Tracking-Overlay anzeigen, "
         "Höhenverlauf anzeigen, Koordinaten anzeigen, RSSI/LQ Heatmap aktivieren.",
@@ -765,6 +782,12 @@ def build_story():
         "verhält sie sich unverändert wie bisher. Die Sound-Wiedergabe funktioniert nur unter "
         "Windows (über die Windows-eigene winsound-API); unter anderen Betriebssystemen fällt "
         "die App automatisch auf die Sprachausgabe zurück."
+    ))
+    story.append(P(
+        "Ab Werk sind bereits sinnvolle EdgeTX-Sounds für vier der sieben Warnungen "
+        "vorbelegt (Akku niedrig, Akku kritisch, Energiereserve kritisch, Modell verloren) - "
+        "die übrigen drei Warnungen nutzen weiterhin die Sprachausgabe, bis eigene Sounds "
+        "ausgewählt werden. Jede Vorbelegung lässt sich jederzeit im selben Dialog ändern."
     ))
 
     # --- 14. Exe ---
