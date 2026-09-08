@@ -9,6 +9,7 @@ stay well within Protomaps' fair-use expectations for the free daily build.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional
 
 from PyQt6.QtCore import Qt
@@ -49,7 +50,7 @@ class PMTilesDownloadDialog(QDialog):
         self._region_list = QListWidget()
         self._region_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         for region in KNOWN_REGIONS:
-            item = QListWidgetItem(i18n.tr(region.label_key))
+            item = QListWidgetItem(self._item_text(region))
             item.setData(Qt.ItemDataRole.UserRole, region)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked)
@@ -106,6 +107,28 @@ class PMTilesDownloadDialog(QDialog):
         self._queue: List[RegionSpec] = []
         self._queue_total = 0
         self._cancel_requested = False
+        self._current_region: Optional[RegionSpec] = None
+
+    def _downloaded_timestamp(self, region: RegionSpec) -> Optional[str]:
+        path = pmtiles_dir() / region.filename
+        if not path.is_file():
+            return None
+        mtime = datetime.fromtimestamp(path.stat().st_mtime)
+        return mtime.strftime("%d.%m.%Y %H:%M")
+
+    def _item_text(self, region: RegionSpec) -> str:
+        name = i18n.tr(region.label_key)
+        downloaded_at = self._downloaded_timestamp(region)
+        if downloaded_at is None:
+            return name
+        return f"{name}  —  {i18n.tr('pmtilesdownload_item_downloaded_suffix', date=downloaded_at)}"
+
+    def _refresh_item_text(self, region: RegionSpec) -> None:
+        for i in range(self._region_list.count()):
+            item = self._region_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) is region:
+                item.setText(self._item_text(region))
+                return
 
     def _apply_filter(self, text: str) -> None:
         needle = text.strip().lower()
@@ -157,6 +180,7 @@ class PMTilesDownloadDialog(QDialog):
             return
 
         region = self._queue.pop(0)
+        self._current_region = region
         done_count = self._queue_total - len(self._queue)
         self._overall_label.setText(
             i18n.tr("pmtilesdownload_overall_progress", index=done_count, total=self._queue_total, region=i18n.tr(region.label_key))
@@ -189,6 +213,8 @@ class PMTilesDownloadDialog(QDialog):
 
     def _on_finished_ok(self, output_path: str) -> None:
         self._status_label.setText(i18n.tr("pmtilesdownload_status_done", path=output_path))
+        if self._current_region is not None:
+            self._refresh_item_text(self._current_region)
         self._worker = None
         self._start_next_download()
 
