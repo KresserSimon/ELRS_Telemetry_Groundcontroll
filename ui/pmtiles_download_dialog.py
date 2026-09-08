@@ -12,7 +12,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -60,10 +61,13 @@ class PMTilesDownloadDialog(QDialog):
         select_all_btn.clicked.connect(lambda: self._set_all_checked(True))
         select_none_btn = QPushButton(i18n.tr("pmtilesdownload_select_none_btn"))
         select_none_btn.clicked.connect(lambda: self._set_all_checked(False))
+        open_folder_btn = QPushButton(i18n.tr("pmtilesdownload_open_folder_btn"))
+        open_folder_btn.clicked.connect(self._open_folder)
         select_row = QHBoxLayout()
         select_row.addWidget(select_all_btn)
         select_row.addWidget(select_none_btn)
         select_row.addStretch(1)
+        select_row.addWidget(open_folder_btn)
 
         self._folder_label = QLabel(i18n.tr("pmtilesdownload_folder_label", folder=str(pmtiles_dir())))
         self._folder_label.setWordWrap(True)
@@ -108,6 +112,11 @@ class PMTilesDownloadDialog(QDialog):
         self._queue_total = 0
         self._cancel_requested = False
         self._current_region: Optional[RegionSpec] = None
+
+    def _open_folder(self) -> None:
+        folder = pmtiles_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def _downloaded_timestamp(self, region: RegionSpec) -> Optional[str]:
         path = pmtiles_dir() / region.filename
