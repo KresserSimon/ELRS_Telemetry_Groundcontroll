@@ -229,6 +229,24 @@ pip install -r requirements.txt
 `pyttsx3` nutzt unter Windows die eingebaute SAPI5-Sprachausgabe, es sind
 also keine zusätzlichen Systempakete nötig.
 
+**Liegt das Projekt in einem OneDrive-synchronisierten Ordner** (wie hier):
+`.venv`, `dist` und `build` sollten dort niemals direkt liegen, da OneDrive
+Dateien darin mitten im Schreibvorgang sperrt (kaputte venvs, abgebrochene
+pip-Installationen, PermissionError beim PyInstaller-Rebuild). Stattdessen
+einmal pro Rechner (auch auf einem zweiten Rechner/Laptop, auf den der
+Ordner ebenfalls synct):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup_dev_env.ps1
+```
+
+Das Skript legt `.venv`, `dist` und `build` in
+`%LOCALAPPDATA%\ELRS_GroundStation` an (dort synct OneDrive nichts) und
+verknüpft sie per NTFS-Junction an die gewohnten Projektpfade - der
+restliche Workflow (`python main.py`, PyInstaller-Build) bleibt unverändert,
+und ein manuelles Löschen/Wiederherstellen der `assets/pmtiles`-Regionen vor
+jedem Rebuild ist damit nicht mehr nötig.
+
 ## Ausführung
 
 Demo-Modus (keine Hardware nötig, simuliert einen Loiter-Kreisflug inkl.
@@ -812,6 +830,22 @@ pip install -r requirements.txt
 
 `pyttsx3` uses Windows' built-in SAPI5 text-to-speech, so no extra system
 packages are needed.
+
+**If the project lives inside a OneDrive-synced folder** (as it does here):
+never let `.venv`, `dist` or `build` sit directly in that synced tree -
+OneDrive locks files inside them mid-write (broken venvs, aborted pip
+installs, PermissionErrors during PyInstaller rebuilds). Instead, once per
+machine (including a second machine/laptop the folder also syncs to):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup_dev_env.ps1
+```
+
+This puts `.venv`, `dist` and `build` under `%LOCALAPPDATA%\ELRS_GroundStation`
+(never synced by OneDrive) and links them back to the usual project paths
+via NTFS junctions - the rest of the workflow (`python main.py`, PyInstaller
+builds) is unchanged, and manually clearing/restoring the `assets/pmtiles`
+regions before every rebuild is no longer necessary.
 
 ## Running it
 
