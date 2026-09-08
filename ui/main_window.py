@@ -52,6 +52,7 @@ from core.geofence_monitor import GeofenceMonitor
 from core.flight_summary import summarize
 from core.gs_position import GsPosition, compute_azimuth_elevation, load_gs_position, save_gs_position
 from core.home_config import load_home_position, save_home_position
+from core.acg_nfz_import import load_bundled_austria_zones
 from core.lost_model_monitor import DEFAULT_TIMEOUT_S as LOST_MODEL_DEFAULT_TIMEOUT_S, LostModelMonitor
 from core.nfz import NoFlyZoneManager
 from core.nfz_proximity import DEFAULT_THRESHOLD_M, NfzProximityMonitor, nearest_zone
@@ -584,6 +585,10 @@ class MainWindow(QMainWindow):
         import_nfz_action = nfz_menu.addAction("")
         self._i18n_actions.append((import_nfz_action, "menu_map_nfz_import"))
         import_nfz_action.triggered.connect(self._import_nfz)
+
+        load_acg_austria_action = nfz_menu.addAction("")
+        self._i18n_actions.append((load_acg_austria_action, "menu_nfz_acg_austria_load"))
+        load_acg_austria_action.triggered.connect(self._load_acg_austria_zones)
 
         self._nfz_visible_action = nfz_menu.addAction("")
         self._i18n_actions.append((self._nfz_visible_action, "menu_map_nfz_visible"))
@@ -2265,6 +2270,16 @@ class MainWindow(QMainWindow):
 
         try:
             zones = import_nfz_file(path)
+        except (ValueError, OSError) as exc:
+            QMessageBox.critical(self, i18n.tr("msgbox_nfz_import_failed_title"), str(exc))
+            return
+
+        self._nfz_manager.set_all(zones)
+        self.statusBar().showMessage(i18n.tr("status_nfz_imported", count=len(zones)), 5000)
+
+    def _load_acg_austria_zones(self) -> None:
+        try:
+            zones = load_bundled_austria_zones()
         except (ValueError, OSError) as exc:
             QMessageBox.critical(self, i18n.tr("msgbox_nfz_import_failed_title"), str(exc))
             return

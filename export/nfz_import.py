@@ -22,7 +22,7 @@ DEFAULT_RADIUS_M = 500.0
 def import_nfz_file(path: str) -> List[NoFlyZone]:
     if os.path.splitext(path)[1].lower() == ".csv":
         return import_nfz_csv(path)
-    return import_nfz_geojson(path)
+    return import_nfz_json(path)
 
 
 def polygon_rings_from_geometry(geometry: dict) -> List[List[tuple]]:
@@ -45,10 +45,30 @@ def polygon_rings_from_geometry(geometry: dict) -> List[List[tuple]]:
     return [[(pt[1], pt[0]) for pt in ring] for ring in rings]  # GeoJSON coordinates are [lon, lat]
 
 
-def import_nfz_geojson(path: str) -> List[NoFlyZone]:
-    with open(path, encoding="utf-8") as f:
+def import_nfz_json(path: str) -> List[NoFlyZone]:
+    """Import a .json NFZ file, auto-detecting its shape: either a plain
+    GeoJSON FeatureCollection/Feature, or Austro Control's "UAS Zones"
+    geo-awareness export (a bare JSON array of zone objects - see
+    core/acg_nfz_import.py). Deferred import of that module avoids a
+    circular import, since it in turn reuses this module's
+    polygon_rings_from_geometry().
+    """
+    with open(path, encoding="utf-8-sig") as f:
         data = json.load(f)
 
+    if isinstance(data, list):
+        from core.acg_nfz_import import is_acg_zone_format, zones_from_acg_data
+
+        if is_acg_zone_format(data):
+            zones = zones_from_acg_data(data)
+            if not zones:
+                raise ValueError("Keine Zonen in der Austro-Control-Zonendatei gefunden.")
+            return zones
+
+    return zones_from_geojson_data(data)
+
+
+def zones_from_geojson_data(data: dict) -> List[NoFlyZone]:
     features = data.get("features", []) if isinstance(data, dict) else []
     if not features and isinstance(data, dict) and data.get("type") == "Feature":
         features = [data]
