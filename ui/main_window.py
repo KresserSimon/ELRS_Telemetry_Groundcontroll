@@ -157,6 +157,7 @@ HORIZON_SCALES = (
 )
 DEFAULT_HORIZON_SCALE = 1.0
 DASHBOARD_SCALES = (
+    ("dashboard_scale_auto", None),
     ("dashboard_scale_small", DASHBOARD_SCALE_SMALL),
     ("dashboard_scale_medium", DASHBOARD_SCALE_MEDIUM),
     ("dashboard_scale_large", DASHBOARD_SCALE_LARGE),
@@ -235,14 +236,17 @@ class MainWindow(QMainWindow):
         )
         self._dashboard = Dashboard()
         self._dashboard.set_model_profile_names(list(load_profiles().keys()))
-        # No saved preference yet -> auto-pick from the actual screen size
-        # (see core/display_info.py), not just DASHBOARD_SCALE_MEDIUM -
-        # built after a real report that the dashboard, tuned on a
-        # 4K/200%-scaled dev display, looked cramped on a 1920x1080/100%
-        # laptop with the same fixed size. An explicit user choice (menu)
-        # always wins after that, exactly like horizon_scale above.
+        # Initial guess only, from the actual screen size (see
+        # core/display_info.py) - refined moments later, once the splitter
+        # has real geometry, by _fit_dashboard_scale() (see below and
+        # resizeEvent()), which continuously fits the dashboard to its
+        # actual side-panel size rather than a one-time screen-width
+        # heuristic. Picking a fixed size explicitly via the "Dashboard-
+        # Groesse" menu (_set_dashboard_scale) opts back out of that -
+        # exactly like horizon_scale below.
         auto_scale = auto_dashboard_scale(detect_available_width(QApplication.primaryScreen()))
         self._dashboard.set_scale(self._ui_state.get("dashboard_scale", auto_scale))
+        self._dashboard_scale_manual = bool(self._ui_state.get("dashboard_scale_manual", False))
         # The dashboard's natural (unscrolled) minimum height - many field
         # groups plus a docked horizon/altitude chart - can exceed a real
         # screen's usable height (confirmed by a real report: content ran
@@ -359,6 +363,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._splitter)
         self.setCentralWidget(central)
 
+        # Debounced: a live window/splitter-handle drag fires many resize
+        # events per second, and each fit pass re-styles every field/box -
+        # coalescing bursts into one fit ~80ms after they stop avoids
+        # visibly lagging the drag itself.
+        self._dashboard_fit_timer = QTimer(self)
+        self._dashboard_fit_timer.setSingleShot(True)
+        self._dashboard_fit_timer.setInterval(80)
+        self._dashboard_fit_timer.timeout.connect(self._fit_dashboard_scale)
+        self._splitter.splitterMoved.connect(lambda *_: self._dashboard_fit_timer.start())
+
         self._dashboard_position = load_dashboard_position()
         self._apply_dashboard_position(self._dashboard_position)
 
@@ -468,7 +482,7 @@ class MainWindow(QMainWindow):
         for action in (
             self._auto_center_action, self._heading_mode_action, self._coord_overlay_action,
             self._heatmap_action, self._nfz_visible_action, self._nfz_proximity_action,
-            self._geofence_visible_action, self._geofence_enabled_action,
+            self._geofence_visible_action, self._geofence_enabled_action, self._traffic_visible_action,
             self._horizon_toggle_action, self._horizon_dock_action, self._route_editor_action,
             self._route_editor_dock_action, self._track_overlay_action, self._lost_model_overlay_action,
             self._statustext_console_action, self._warning_banner_action,
@@ -932,7 +946,10 @@ class MainWindow(QMainWindow):
             self._i18n_actions.append((action, key))
             action.setCheckable(True)
             action.setData(scale)
-            action.setChecked(scale == self._dashboard.scale())
+            if scale is None:
+                action.setChecked(not self._dashboard_scale_manual)
+            else:
+                action.setChecked(self._dashboard_scale_manual and scale == self._dashboard.scale())
             self._dashboard_scale_group.addAction(action)
         self._dashboard_scale_group.triggered.connect(self._set_dashboard_scale)
 
@@ -1148,6 +1165,11 @@ class MainWindow(QMainWindow):
         self._lost_model_monitor.reset()
         self._lost_model_overlay.set_inactive()
         self._telemetry_catalog.clear()
+        # Extra dashboard fields (see _open_telemetry_variable_editor) are
+        # keyed off this same session-scoped catalog - clear them now
+        # rather than leaving stale frozen values on screen until the new
+        # session's telemetry happens to resend the same keys.
+        self._dashboard.set_extra_fields([])
         self._warning_banner.setVisible(False)
 
     def _start_replay(self, states: list) -> None:
@@ -1509,7 +1531,15 @@ class MainWindow(QMainWindow):
 
     def _open_telemetry_variable_editor(self) -> None:
         dialog = TelemetryVariableEditorDialog(self._telemetry_catalog, self)
+        # Immediate feedback while the dialog is open (e.g. pinning a
+        # variable with no active connection, where the usual _on_telemetry
+        # tick that would otherwise pick this up never fires).
+        dialog.pinned_changed.connect(self._sync_dashboard_extra_fields)
         dialog.exec()
+        self._sync_dashboard_extra_fields()
+
+    def _sync_dashboard_extra_fields(self) -> None:
+        self._dashboard.set_extra_fields(self._telemetry_catalog.pinned_variables())
 
     def _open_sound_alert_settings(self) -> None:
         SoundAlertSettingsDialog(self).exec()
@@ -1800,8 +1830,29 @@ class MainWindow(QMainWindow):
         self._horizon_scale_manual = True
 
     def _set_dashboard_scale(self, action) -> None:
-        self._dashboard.set_scale(action.data())
+        scale = action.data()
+        if scale is None:  # "Automatisch"
+            self._dashboard_scale_manual = False
+            self._fit_dashboard_scale()
+        else:
+            self._dashboard_scale_manual = True
+            self._dashboard.set_scale(scale)
         self._persist_ui_state()
+
+    def _fit_dashboard_scale(self) -> None:
+        """Continuously scales the dashboard's fonts/spacing/icons so its
+        content fits the side panel's actual current width AND height
+        without needing to scroll (see ui/dashboard.py's
+        Dashboard.fit_scale_to_size()) - debounced via
+        self._dashboard_fit_timer, triggered by both a splitter-handle drag
+        (splitterMoved) and a plain window resize (resizeEvent), since only
+        the former emits a Qt signal on its own. Skipped once the user has
+        explicitly picked a fixed size (Klein/Mittel/Gross) - same
+        "manual sticks" pattern as _fit_docked_horizon()."""
+        if self._dashboard_scale_manual:
+            return
+        viewport = self._dashboard_scroll.viewport().size()
+        self._dashboard.fit_scale_to_size(viewport.width(), viewport.height())
 
     def _open_dashboard_settings(self) -> None:
         dialog = DashboardSettingsDialog(
@@ -1827,6 +1878,10 @@ class MainWindow(QMainWindow):
         position = dialog.position()
         self._apply_dashboard_position(position)
         save_dashboard_position(position)
+        # Field visibility/row-count changes the dashboard's natural
+        # content size at the current scale - refit immediately rather
+        # than waiting for the next incidental resize/splitter-drag.
+        self._fit_dashboard_scale()
 
     def _apply_dashboard_position(self, position: str) -> None:
         self._dashboard_position = position
@@ -1891,6 +1946,7 @@ class MainWindow(QMainWindow):
             sizes[dashboard_index] = dashboard_extent
             sizes[map_index] = total - dashboard_extent
             self._splitter.setSizes(sizes)
+            self._dashboard_fit_timer.start()
 
         _apply_split_ratio()
         QTimer.singleShot(0, _apply_split_ratio)
@@ -1997,6 +2053,7 @@ class MainWindow(QMainWindow):
         self._lost_model_monitor.note_telemetry(state)
         self._dashboard.update_state(state, cells=self._battery_cells)
         self._telemetry_catalog.observe(state.extra)
+        self._dashboard.set_extra_fields(self._telemetry_catalog.pinned_variables())
         self._horizon.update_attitude(state.roll, state.pitch)
 
         if state.has_gps_fix():
@@ -2537,6 +2594,7 @@ class MainWindow(QMainWindow):
             "horizon_corner": horizon_pos_action.data() if horizon_pos_action is not None else DEFAULT_HORIZON_CORNER,
             "horizon_scale": self._horizon.scale(),
             "dashboard_scale": self._dashboard.scale(),
+            "dashboard_scale_manual": self._dashboard_scale_manual,
             "route_editor_visible": self._route_editor_action.isChecked(),
             "route_editor_docked": self._route_editor_dock_action.isChecked(),
             "route_editor_size": [self._route_overlay.width(), self._route_overlay.height()],
@@ -2583,6 +2641,14 @@ class MainWindow(QMainWindow):
             # dialog - this fixes it regardless of which startup path (demo/
             # plan/manual-connect) the user took.
             self._apply_dashboard_position(self._dashboard_position)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # Window resizes redistribute the splitter's panes proportionally
+        # without emitting splitterMoved (that only fires on an explicit
+        # user drag of the handle) - this is the other trigger the
+        # debounced dashboard auto-fit needs (see _fit_dashboard_scale()).
+        self._dashboard_fit_timer.start()
 
     def closeEvent(self, event) -> None:
         if self._worker is not None:

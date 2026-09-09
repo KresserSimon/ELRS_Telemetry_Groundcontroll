@@ -101,6 +101,48 @@ class TelemetryVariableCatalogTest(unittest.TestCase):
         second.observe({"esc_temp": 42.0})
         self.assertEqual(second.variables()[0].label, "esc_temp")
 
+    def test_pinned_variable_included_in_pinned_variables(self):
+        catalog = TelemetryVariableCatalog()
+        catalog.observe({"esc_temp": 42.0, "vtx_temp": 55.0})
+        catalog.set_pinned("esc_temp", True)
+        keys = [v.key for v in catalog.pinned_variables()]
+        self.assertEqual(keys, ["esc_temp"])
+
+    def test_unpinned_variable_excluded_from_pinned_variables(self):
+        catalog = TelemetryVariableCatalog()
+        catalog.observe({"esc_temp": 42.0})
+        self.assertEqual(catalog.pinned_variables(), [])
+
+    def test_pinning_then_unpinning_removes_it_again(self):
+        catalog = TelemetryVariableCatalog()
+        catalog.observe({"esc_temp": 42.0})
+        catalog.set_pinned("esc_temp", True)
+        catalog.set_pinned("esc_temp", False)
+        self.assertEqual(catalog.pinned_variables(), [])
+
+    def test_hidden_variable_excluded_from_pinned_even_if_pinned(self):
+        # A variable the user deleted must not still show up as a
+        # dashboard field just because it was pinned earlier.
+        catalog = TelemetryVariableCatalog()
+        catalog.observe({"esc_temp": 42.0})
+        catalog.set_pinned("esc_temp", True)
+        catalog.set_hidden("esc_temp", True)
+        self.assertEqual(catalog.pinned_variables(), [])
+
+    def test_set_pinned_on_unknown_key_is_a_no_op(self):
+        catalog = TelemetryVariableCatalog()
+        catalog.set_pinned("never_seen", True)
+        self.assertEqual(catalog.pinned_variables(), [])
+
+    def test_pinned_override_persists_across_instances(self):
+        first = TelemetryVariableCatalog()
+        first.observe({"esc_temp": 42.0})
+        first.set_pinned("esc_temp", True)
+
+        second = TelemetryVariableCatalog()
+        second.observe({"esc_temp": 42.0})
+        self.assertEqual([v.key for v in second.pinned_variables()], ["esc_temp"])
+
     def test_missing_overrides_file_starts_clean(self):
         catalog = TelemetryVariableCatalog()
         self.assertEqual(catalog.variables(), [])

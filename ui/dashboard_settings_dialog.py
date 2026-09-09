@@ -39,7 +39,7 @@ _POSITION_LABEL_KEYS = {
 class DashboardSettingsDialog(QDialog):
     def __init__(
         self,
-        catalog: List[Tuple[str, List[str]]],
+        catalog: List[Tuple[str, List[Tuple[str, str]]]],
         visible_keys: Set[str],
         group_order: List[str],
         rows: int,
@@ -54,11 +54,11 @@ class DashboardSettingsDialog(QDialog):
 
         container = QWidget()
         vlayout = QVBoxLayout(container)
-        for group_title_key, field_keys in catalog:
+        for group_title_key, fields in catalog:
             box = QGroupBox(i18n.tr(group_title_key))
             box_layout = QVBoxLayout(box)
-            for field_key in field_keys:
-                cb = QCheckBox(i18n.tr(field_key))
+            for field_key, field_label in fields:
+                cb = QCheckBox(field_label)
                 cb.setChecked(field_key in visible_keys)
                 self._checkboxes[field_key] = cb
                 box_layout.addWidget(cb)

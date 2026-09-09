@@ -14,8 +14,15 @@ from PyQt6 import QtWebEngineWidgets  # noqa: F401
 from PyQt6.QtWidgets import QApplication
 
 import ui.dashboard as dashboard_module
+from core.telemetry_catalog import DiscoveredVariable
 from core.telemetry_state import TelemetryState
-from ui.dashboard import DASHBOARD_SCALE_LARGE, DASHBOARD_SCALE_SMALL, Dashboard
+from ui.dashboard import (
+    DASHBOARD_AUTO_MAX_SCALE,
+    DASHBOARD_AUTO_MIN_SCALE,
+    DASHBOARD_SCALE_LARGE,
+    DASHBOARD_SCALE_SMALL,
+    Dashboard,
+)
 
 _app = QApplication.instance() or QApplication([])
 
@@ -148,6 +155,109 @@ class SetScaleTest(unittest.TestCase):
         field.set_color("#e74c3c")
         self.dashboard.set_scale(DASHBOARD_SCALE_LARGE)
         self.assertIn("#e74c3c", field.value.styleSheet())
+
+
+class FitScaleToSizeTest(unittest.TestCase):
+    """Auto-fit (the "Automatisch" Dashboard-Groesse entry, see
+    MainWindow._fit_dashboard_scale()) must actually make the content fit
+    the given size, not just clamp to the preset bounds regardless of
+    input."""
+
+    def setUp(self):
+        self.dashboard = Dashboard()
+
+    def test_returned_scale_is_within_bounds(self):
+        scale = self.dashboard.fit_scale_to_size(2000, 2000)
+        self.assertGreaterEqual(scale, DASHBOARD_AUTO_MIN_SCALE)
+        self.assertLessEqual(scale, DASHBOARD_AUTO_MAX_SCALE)
+
+    def test_content_fits_within_the_given_size_at_the_chosen_scale(self):
+        # A single top/bottom-docked row of every group box (this
+        # dashboard's construction-time default) is wide enough that no
+        # scale in the auto range makes it fit a narrow target - that's
+        # expected (see test_impossibly_small_size_falls_back_to_the_minimum_scale),
+        # not what's under test here. A side-docked, multi-row layout (the
+        # realistic "narrow side panel" case this feature targets) is
+        # compact enough to actually fit a moderate, generous target size.
+        self.dashboard.set_vertical(True)
+        self.dashboard.apply_layout(self.dashboard.group_order(), 4)
+        self.dashboard.set_scale(1.0)
+        natural = self.dashboard.sizeHint()
+        width, height = natural.width() + 50, natural.height() + 50
+
+        scale = self.dashboard.fit_scale_to_size(width, height)
+        self.assertEqual(self.dashboard.scale(), scale)
+        hint = self.dashboard.sizeHint()
+        self.assertLessEqual(hint.width(), width)
+        self.assertLessEqual(hint.height(), height)
+
+    def test_smaller_available_space_never_yields_a_larger_scale(self):
+        big = self.dashboard.fit_scale_to_size(2000, 2000)
+        small = self.dashboard.fit_scale_to_size(400, 250)
+        self.assertLessEqual(small, big)
+
+    def test_impossibly_small_size_falls_back_to_the_minimum_scale(self):
+        scale = self.dashboard.fit_scale_to_size(1, 1)
+        self.assertEqual(scale, DASHBOARD_AUTO_MIN_SCALE)
+
+    def test_nonpositive_size_is_a_no_op(self):
+        self.dashboard.set_scale(DASHBOARD_SCALE_LARGE)
+        result = self.dashboard.fit_scale_to_size(0, 500)
+        self.assertEqual(result, DASHBOARD_SCALE_LARGE)
+        self.assertEqual(self.dashboard.scale(), DASHBOARD_SCALE_LARGE)
+
+
+class ExtraFieldsTest(unittest.TestCase):
+    """Pinned telemetry-catalog variables (core/telemetry_catalog.py)
+    becoming their own dashboard fields at runtime - docs/feature_plan.md's
+    Telemetrie-Variablen-Editor, Punkt 4."""
+
+    def setUp(self):
+        self.dashboard = Dashboard()
+
+    def _variable(self, key, value=1.0, display_name=""):
+        return DiscoveredVariable(key=key, last_value=value, first_seen=0.0, display_name=display_name)
+
+    def test_pinning_adds_a_visible_field_with_the_expected_id(self):
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c", 45.0)])
+        self.assertIn("extra:esc_temp_c", self.dashboard.all_field_keys())
+        self.assertIn("extra:esc_temp_c", self.dashboard.visible_fields())
+
+    def test_pinning_creates_the_custom_group(self):
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c")])
+        self.assertIn("dash_extra", self.dashboard._boxes_by_key)
+        self.assertIn("dash_extra", self.dashboard.group_order())
+
+    def test_unpinning_removes_the_field(self):
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c")])
+        self.dashboard.set_extra_fields([])
+        self.assertNotIn("extra:esc_temp_c", self.dashboard.all_field_keys())
+
+    def test_relabeling_updates_the_caption_without_removing_the_field(self):
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c", display_name="ESC")])
+        field = self.dashboard._extra_fields_by_telemetry_key["esc_temp_c"]
+        self.assertEqual(field.caption_text(), "ESC")
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c", display_name="ESC Temp")])
+        self.assertIs(self.dashboard._extra_fields_by_telemetry_key["esc_temp_c"], field)
+        self.assertEqual(field.caption_text(), "ESC Temp")
+
+    def test_update_extra_values_sets_the_displayed_text(self):
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c")])
+        self.dashboard.update_extra_values({"esc_temp_c": 47.5})
+        field = self.dashboard._extra_fields_by_telemetry_key["esc_temp_c"]
+        self.assertEqual(field.value.text(), "47.5")
+
+    def test_update_extra_values_shows_na_for_a_missing_key(self):
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c")])
+        self.dashboard.update_extra_values({})
+        field = self.dashboard._extra_fields_by_telemetry_key["esc_temp_c"]
+        self.assertEqual(field.value.text(), "--")
+
+    def test_multiple_pinned_variables_all_get_fields(self):
+        self.dashboard.set_extra_fields([self._variable("esc_temp_c"), self._variable("vtx_temp_c")])
+        self.assertEqual(
+            set(self.dashboard._extra_fields_by_telemetry_key.keys()), {"esc_temp_c", "vtx_temp_c"}
+        )
 
 
 if __name__ == "__main__":

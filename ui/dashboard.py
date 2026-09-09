@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
@@ -56,6 +56,13 @@ _BASE_GROUP_TITLE_FONT_PX = 9
 _BASE_FIELD_MARGINS = (4, 2, 4, 2)
 
 DEFAULT_DASHBOARD_SCALE = DASHBOARD_SCALE_MEDIUM
+
+# Bounds for fit_scale_to_size()'s search - a floor below which text/icons
+# would stop being legibly readable, and a ceiling past which the presets
+# above (dashboard_scale_large = 1.25) already look intentionally spacious
+# rather than auto-fit "using up extra room".
+DASHBOARD_AUTO_MIN_SCALE = 0.5
+DASHBOARD_AUTO_MAX_SCALE = 1.6
 
 
 def _scaled_px(base_px: int, scale: float) -> int:
@@ -111,18 +118,34 @@ def _icon_label(pixmap) -> QLabel:
 
 
 class _Field(QWidget):
-    def __init__(self, caption_key: str) -> None:
+    def __init__(self, caption_key: str, literal_caption: Optional[str] = None) -> None:
         super().__init__()
+        # A regular field's caption_key is a real i18n key. A dynamic extra
+        # field (see Dashboard.set_extra_fields()) instead passes a
+        # synthetic "extra:<telemetry key>" id here - stable and unique
+        # enough to reuse every existing caption_key-keyed mechanism
+        # (visibility persistence, field_catalog(), uniform-width sizing)
+        # unchanged - plus literal_caption, the actual (non-translated)
+        # label text to show, since a user's own telemetry variable name
+        # isn't something i18n.tr() has a translation for.
         self.caption_key = caption_key
+        self._literal_caption = literal_caption
         self._scale = 1.0
         self._value_color: Optional[str] = None
         self._layout = QVBoxLayout(self)
         self._layout.setSpacing(0)
-        self.caption_label = QLabel(i18n.tr(caption_key))
+        self.caption_label = QLabel(self.caption_text())
         self.value = _value_label()
         self._layout.addWidget(self.caption_label)
         self._layout.addWidget(self.value)
         self._apply_scale()
+
+    def caption_text(self) -> str:
+        return self._literal_caption if self._literal_caption is not None else i18n.tr(self.caption_key)
+
+    def set_literal_caption(self, text: str) -> None:
+        self._literal_caption = text
+        self.caption_label.setText(self.caption_text())
 
     def set_text(self, text: str) -> None:
         self.value.setText(text)
@@ -135,7 +158,7 @@ class _Field(QWidget):
         self._apply_scale()
 
     def retranslate(self) -> None:
-        self.caption_label.setText(i18n.tr(self.caption_key))
+        self.caption_label.setText(self.caption_text())
 
     def set_scale(self, scale: float) -> None:
         self._scale = scale
@@ -166,6 +189,17 @@ class _Field(QWidget):
 DEFAULT_ROWS = 1
 MAX_ROWS = 4
 
+# Group/field-id scheme for pinned telemetry-catalog variables (see
+# set_extra_fields()) - EXTRA_FIELD_PREFIX makes a dynamic field's id
+# ("extra:<telemetry key>") impossible to collide with a real i18n
+# caption_key, all of which look like "dash_xxx".
+EXTRA_GROUP_KEY = "dash_extra"
+EXTRA_FIELD_PREFIX = "extra:"
+
+
+def _extra_field_id(telemetry_key: str) -> str:
+    return f"{EXTRA_FIELD_PREFIX}{telemetry_key}"
+
 
 class Dashboard(QWidget):
     # Emitted on every resize - MainWindow uses this to re-fit a docked
@@ -193,6 +227,7 @@ class Dashboard(QWidget):
         self._scale = DEFAULT_DASHBOARD_SCALE
         self.setStyleSheet(f"Dashboard {{ background-color: {PANEL_BG}; }}" + _group_qss(self._scale))
         self._fields: list[_Field] = []
+        self._extra_fields_by_telemetry_key: Dict[str, _Field] = {}
         self._boxes_by_key: Dict[str, QGroupBox] = {}
         self._fields_by_box: dict = {}
         self._icon_by_box: dict = {}
@@ -495,10 +530,14 @@ class Dashboard(QWidget):
     # ------------------------------------------------------- configuration
 
     def field_catalog(self) -> list:
-        """[(group_title_key, [field_caption_key, ...]), ...] for the settings
-        dialog, in the dashboard's current display order."""
+        """[(group_title_key, [(field_id, field_label), ...]), ...] for the
+        settings dialog, in the dashboard's current display order.
+        field_label is pre-resolved here (rather than left for the caller
+        to i18n.tr(field_id)) because a dynamic extra field's id is a
+        synthetic "extra:<key>" string with no i18n entry of its own - see
+        _Field.caption_text()."""
         return [
-            (key, [f.caption_key for f in self._fields_by_box.get(self._boxes_by_key[key], [])])
+            (key, [(f.caption_key, f.caption_text()) for f in self._fields_by_box.get(self._boxes_by_key[key], [])])
             for key in self._group_order
             if self._fields_by_box.get(self._boxes_by_key.get(key))
         ]
@@ -558,6 +597,47 @@ class Dashboard(QWidget):
             current = label.pixmap()
             if current is not None and not current.isNull():
                 self._set_icon_pixmap(label, current, icon_size)
+
+    def fit_scale_to_size(self, available_width: int, available_height: int) -> float:
+        """Binary-search the largest scale (within DASHBOARD_AUTO_MIN/MAX_SCALE)
+        whose content still fits within `available_width` x `available_height`
+        without scrolling, apply it, and return it - the "Automatisch" entry
+        in the Dashboard-Groesse menu (see MainWindow._fit_dashboard_scale()),
+        which passes the side panel's actual current viewport size here on
+        every resize.
+
+        Uses real sizeHint() measurements at each candidate scale rather than
+        a closed-form formula: most of set_scale()'s effects (fonts, field
+        margins, icon pixmaps, group-box padding) scale linearly with the
+        factor, but a few container-level spacings (the outer grid's
+        spacing, the wrapper's own margins) deliberately don't - see
+        set_scale() and _group_qss() - so a plain multiply-by-ratio guess
+        would drift at the extremes of the range."""
+        if available_width <= 0 or available_height <= 0:
+            return self._scale
+
+        def fits(scale: float) -> bool:
+            self.set_scale(scale)
+            hint = self.sizeHint()
+            return hint.width() <= available_width and hint.height() <= available_height
+
+        lo, hi = DASHBOARD_AUTO_MIN_SCALE, DASHBOARD_AUTO_MAX_SCALE
+        if not fits(lo):
+            # Doesn't fit even at the smallest auto scale - use it anyway;
+            # the QScrollArea this dashboard normally sits in (see
+            # MainWindow) remains the fallback for whatever genuinely can't
+            # fit, same as before this feature existed.
+            return lo
+
+        best = lo
+        for _ in range(8):  # ~8 bisections is far more precision than a font-size scale needs
+            mid = (lo + hi) / 2
+            if fits(mid):
+                best, lo = mid, mid
+            else:
+                hi = mid
+        self.set_scale(best)
+        return best
 
     @staticmethod
     def _set_icon_pixmap(label: QLabel, pixmap: QPixmap, size: int) -> None:
@@ -653,6 +733,87 @@ class Dashboard(QWidget):
         self._outer.setColumnStretch(last_col + 1, 1)
 
         self._apply_uniform_field_width()
+
+    # -------------------------------------------------------- extra fields
+    #
+    # A pinned telemetry-catalog variable (core/telemetry_catalog.py,
+    # docs/feature_plan.md's Telemetrie-Variablen-Editor, Punkt 4) becomes
+    # its own field in a dedicated "Benutzerdefiniert" group, added/removed
+    # at runtime - the first real opening of what used to be a fixed,
+    # build-time-only field set (see the module docstring's design note in
+    # earlier planning). Reuses every existing caption_key-keyed mechanism
+    # (visibility persistence, uniform-width sizing, field_catalog()) via
+    # the synthetic "extra:<key>" id from _extra_field_id(), rather than
+    # inventing a parallel system just for these.
+
+    def set_extra_fields(self, variables) -> None:
+        """Reconciles the dynamic group against `variables`
+        (core.telemetry_catalog.DiscoveredVariable, already filtered to
+        pinned+non-hidden by the caller - see
+        core.telemetry_catalog.TelemetryVariableCatalog.pinned_variables())
+        - added/removed/relabeled fields all go through this single entry
+        point. Cheap to call often: a no-op pass (nothing pinned/unpinned,
+        no label changed) does no layout work at all."""
+        wanted = {v.key: v for v in variables}
+
+        removed = False
+        for key in list(self._extra_fields_by_telemetry_key):
+            if key not in wanted:
+                self._remove_extra_field(key)
+                removed = True
+
+        added = False
+        for key, variable in wanted.items():
+            field = self._extra_fields_by_telemetry_key.get(key)
+            if field is None:
+                self._add_extra_field(key, variable.label)
+                added = True
+            elif field.caption_text() != variable.label:
+                field.set_literal_caption(variable.label)
+
+        if added or removed:
+            self.apply_layout(self._group_order, self._rows)
+            self.apply_field_visibility(self._visible_fields)
+            self.retranslate()
+
+    def _add_extra_field(self, telemetry_key: str, label: str) -> None:
+        box = self._boxes_by_key.get(EXTRA_GROUP_KEY)
+        if box is None:
+            box = self._group(EXTRA_GROUP_KEY, [], icons.sensor_icon())
+            self._group_order.append(EXTRA_GROUP_KEY)
+
+        field = _Field(_extra_field_id(telemetry_key), literal_caption=label)
+        field.set_scale(self._scale)
+        self._fields.append(field)
+        self._fields_by_box.setdefault(box, []).append(field)
+        self._extra_fields_by_telemetry_key[telemetry_key] = field
+        # A brand-new field defaults to visible; an already-known one (e.g.
+        # unpinned then re-pinned in the same run, or restored from a
+        # previous session's dashboard_fields.json) keeps whatever is
+        # already recorded for it instead of being forced back on.
+        self._visible_fields.add(field.caption_key)
+        self._rebuild_box_layout(box, self._vertical)
+
+    def _remove_extra_field(self, telemetry_key: str) -> None:
+        field = self._extra_fields_by_telemetry_key.pop(telemetry_key, None)
+        if field is None:
+            return
+        box = self._boxes_by_key.get(EXTRA_GROUP_KEY)
+        if box is not None and box in self._fields_by_box:
+            self._fields_by_box[box] = [f for f in self._fields_by_box[box] if f is not field]
+            self._rebuild_box_layout(box, self._vertical)
+        self._fields = [f for f in self._fields if f is not field]
+        self._visible_fields.discard(field.caption_key)
+        field.setParent(None)
+        field.deleteLater()
+
+    def update_extra_values(self, extra: Mapping[str, float]) -> None:
+        """Refreshes only the displayed values of already-existing extra
+        fields (see update_state()) - cheap, no layout work; adding/
+        removing/relabeling fields only ever happens via set_extra_fields()."""
+        for telemetry_key, field in self._extra_fields_by_telemetry_key.items():
+            value = extra.get(telemetry_key)
+            field.set_text(f"{value:g}" if value is not None else _NA)
 
     # ------------------------------------------------------------ profiles
 
@@ -772,6 +933,7 @@ class Dashboard(QWidget):
             self.flight_timer.set_text(_NA)
 
         self.set_connection_status(state.connected)
+        self.update_extra_values(state.extra)
 
     # Reserve-ampel colors match the map's linkQualityColor() heatmap
     # palette (ui/map_template.py) for a consistent green/yellow/red vibe

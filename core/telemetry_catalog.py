@@ -27,6 +27,7 @@ class DiscoveredVariable:
     first_seen: float
     display_name: str = ""
     hidden: bool = False
+    pinned: bool = False
 
     @property
     def label(self) -> str:
@@ -39,6 +40,11 @@ class TelemetryVariableCatalog:
         overrides = _load_overrides()
         self._display_names: Dict[str, str] = dict(overrides.get("display_names", {}))
         self._hidden: Set[str] = set(overrides.get("hidden", []))
+        # Which keys the user has asked to also show as a dashboard field
+        # (see ui/dashboard.py's Dashboard.set_extra_fields()) - a real,
+        # deliberate preference like display_name/hidden above, not
+        # session-scoped like the discovered values themselves.
+        self._pinned: Set[str] = set(overrides.get("pinned", []))
 
     def observe(self, extra: Mapping[str, float]) -> None:
         """Called with TelemetryState.extra on every telemetry tick -
@@ -57,6 +63,7 @@ class TelemetryVariableCatalog:
                     first_seen=now,
                     display_name=self._display_names.get(key, ""),
                     hidden=key in self._hidden,
+                    pinned=key in self._pinned,
                 )
             else:
                 existing.last_value = value
@@ -88,6 +95,29 @@ class TelemetryVariableCatalog:
             self._hidden.discard(key)
         self._save_overrides()
 
+    def set_pinned(self, key: str, pinned: bool) -> None:
+        variable = self._variables.get(key)
+        if variable is None:
+            return
+        variable.pinned = pinned
+        if pinned:
+            self._pinned.add(key)
+        else:
+            self._pinned.discard(key)
+        self._save_overrides()
+
+    def pinned_variables(self) -> List[DiscoveredVariable]:
+        """Currently-observed (this session), pinned, non-hidden variables -
+        what ui/dashboard.py's Dashboard.set_extra_fields() should show as
+        dashboard fields right now. A key pinned in a previous session but
+        not yet (re)observed in this one simply isn't in self._variables
+        yet - it reappears automatically the moment its source sends it
+        again, same as every other session-scoped catalog entry."""
+        return sorted(
+            (v for v in self._variables.values() if v.pinned and not v.hidden),
+            key=lambda v: v.key,
+        )
+
     def clear(self) -> None:
         """Discovered keys/values are session-scoped (see the module
         docstring) - called on every new connection/demo/replay start,
@@ -95,7 +125,11 @@ class TelemetryVariableCatalog:
         self._variables.clear()
 
     def _save_overrides(self) -> None:
-        _save_overrides({"display_names": self._display_names, "hidden": sorted(self._hidden)})
+        _save_overrides({
+            "display_names": self._display_names,
+            "hidden": sorted(self._hidden),
+            "pinned": sorted(self._pinned),
+        })
 
 
 def _load_overrides() -> dict:

@@ -1,11 +1,14 @@
 """Shows telemetry variables auto-detected beyond the fixed TelemetryState
 schema (see core/telemetry_catalog.py and docs/feature_plan.md's
 "Telemetrie-Variablen-Editor") - live values while a connection is active,
-with a user-editable display name and a delete/restore toggle.
+with a user-editable display name, a delete/restore toggle, and a checkbox
+to pin a variable as an extra dashboard field (see ui/dashboard.py's
+Dashboard.set_extra_fields() - docs/feature_plan.md's Punkt 4, previously
+deferred as "deutlich groesserer Umbau").
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -22,7 +25,7 @@ from PyQt6.QtWidgets import (
 from core import i18n
 from core.telemetry_catalog import TelemetryVariableCatalog
 
-_COL_KEY, _COL_VALUE, _COL_NAME, _COL_ACTION = range(4)
+_COL_KEY, _COL_VALUE, _COL_NAME, _COL_PIN, _COL_ACTION = range(5)
 _REFRESH_INTERVAL_MS = 500
 
 
@@ -33,11 +36,17 @@ def _readonly_item(text: str) -> QTableWidgetItem:
 
 
 class TelemetryVariableEditorDialog(QDialog):
+    # Emitted whenever a variable's pinned (dashboard-field) state changes -
+    # MainWindow re-syncs the dashboard's dynamic fields immediately in
+    # response, rather than waiting for the next telemetry tick (which
+    # wouldn't arrive at all while offline/between flights).
+    pinned_changed = pyqtSignal()
+
     def __init__(self, catalog: TelemetryVariableCatalog, parent=None) -> None:
         super().__init__(parent)
         self._catalog = catalog
         self.setWindowTitle(i18n.tr("varedit_dialog_title"))
-        self.resize(560, 360)
+        self.resize(620, 360)
 
         self._hint_label = QLabel(i18n.tr("varedit_hint"))
         self._hint_label.setWordWrap(True)
@@ -45,11 +54,12 @@ class TelemetryVariableEditorDialog(QDialog):
         self._show_hidden_check = QCheckBox(i18n.tr("varedit_show_hidden"))
         self._show_hidden_check.toggled.connect(self._rebuild_rows)
 
-        self._table = QTableWidget(0, 4)
+        self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels([
             i18n.tr("varedit_col_key"),
             i18n.tr("varedit_col_value"),
             i18n.tr("varedit_col_name"),
+            i18n.tr("varedit_col_pin"),
             "",
         ])
         self._table.verticalHeader().setVisible(False)
@@ -57,6 +67,7 @@ class TelemetryVariableEditorDialog(QDialog):
         self._table.horizontalHeader().setSectionResizeMode(_COL_KEY, QHeaderView.ResizeMode.ResizeToContents)
         self._table.horizontalHeader().setSectionResizeMode(_COL_VALUE, QHeaderView.ResizeMode.ResizeToContents)
         self._table.horizontalHeader().setSectionResizeMode(_COL_NAME, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(_COL_PIN, QHeaderView.ResizeMode.ResizeToContents)
         self._table.horizontalHeader().setSectionResizeMode(_COL_ACTION, QHeaderView.ResizeMode.ResizeToContents)
         self._table.itemChanged.connect(self._on_item_changed)
 
@@ -101,6 +112,12 @@ class TelemetryVariableEditorDialog(QDialog):
             name_item.setData(Qt.ItemDataRole.UserRole, variable.key)
             self._table.setItem(row, _COL_NAME, name_item)
 
+            pin_check = QCheckBox()
+            pin_check.setChecked(variable.pinned)
+            pin_check.setToolTip(i18n.tr("varedit_pin_tooltip"))
+            pin_check.toggled.connect(lambda checked, key=variable.key: self._toggle_pinned(key, checked))
+            self._table.setCellWidget(row, _COL_PIN, pin_check)
+
             button = QPushButton(
                 i18n.tr("varedit_restore_btn") if variable.hidden else i18n.tr("varedit_delete_btn")
             )
@@ -132,3 +149,7 @@ class TelemetryVariableEditorDialog(QDialog):
     def _toggle_hidden(self, key: str, currently_hidden: bool) -> None:
         self._catalog.set_hidden(key, not currently_hidden)
         self._rebuild_rows()
+
+    def _toggle_pinned(self, key: str, pinned: bool) -> None:
+        self._catalog.set_pinned(key, pinned)
+        self.pinned_changed.emit()

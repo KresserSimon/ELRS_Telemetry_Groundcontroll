@@ -16,9 +16,11 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
+    Image,
     NextPageTemplate,
     PageBreak,
     PageTemplate,
@@ -30,6 +32,7 @@ from reportlab.platypus import (
 )
 
 OUTPUT_PATH = Path(__file__).resolve().parent / "ELRS_Ground_Station_Benutzerhandbuch.pdf"
+SCREENSHOTS_DIR = Path(__file__).resolve().parent / "screenshots"
 
 # ----------------------------------------------------------------- styles
 
@@ -53,6 +56,10 @@ STYLES = {
         backColor=colors.HexColor("#f2f2f2"), borderPadding=6, spaceAfter=8,
     ),
     "toc": ParagraphStyle("toc", parent=_base["Normal"], fontSize=10, leading=15, leftIndent=8),
+    "caption": ParagraphStyle(
+        "caption", parent=_base["Normal"], fontName="Helvetica-Oblique", fontSize=8, alignment=1,
+        textColor=colors.grey, spaceBefore=2, spaceAfter=10,
+    ),
 }
 
 
@@ -66,6 +73,20 @@ def bullets(items, style: str = "bullet"):
 
 def code(text: str) -> Preformatted:
     return Preformatted(text, STYLES["code"])
+
+
+def figure(filename: str, caption: str, max_width_mm: float = 150):
+    """A screenshot (docs/screenshots/<filename>) plus an italic caption
+    beneath it, scaled to at most `max_width_mm` wide with its aspect
+    ratio preserved (read from the actual PNG rather than guessed, so a
+    re-cropped/re-taken screenshot never silently comes out stretched)."""
+    path = SCREENSHOTS_DIR / filename
+    intrinsic_width, intrinsic_height = ImageReader(str(path)).getSize()
+    width = min(max_width_mm * mm, intrinsic_width)
+    height = width * (intrinsic_height / intrinsic_width)
+    img = Image(str(path), width=width, height=height)
+    img.hAlign = "CENTER"
+    return [Spacer(1, 4), img, P(caption, "caption")]
 
 
 def simple_table(rows, col_widths=None):
@@ -423,12 +444,30 @@ def build_story():
         "Spalte passen."
     ))
     story.append(P(
-        "Zusätzlich lässt sich unter Telemetrie & Hardware -&gt; Dashboard-Größe die Schrift-, "
-        "Icon- und Abstandsgröße der gesamten Telemetrie-Leiste in drei Stufen (Klein 75&#37;, "
-        "Mittel 100&#37;, Groß 125&#37;) skalieren. Beim allerersten Start wird automatisch ein "
-        "sinnvoller Wert anhand der tatsächlichen Bildschirmgröße vorbelegt (kompaktere "
-        "Voreinstellung auf 1920x1080-Displays, großzügigere auf 2K/4K-Bildschirmen) - die eigene "
-        "Auswahl über das Menü hat danach immer Vorrang."
+        "Unter Telemetrie & Hardware -&gt; Dashboard-Größe lässt sich zusätzlich die Schrift-, "
+        "Icon- und Abstandsgröße der gesamten Telemetrie-Leiste einstellen - standardmäßig "
+        "<b>Automatisch</b>: die Größe wird laufend an die tatsächliche Breite und Höhe des "
+        "Telemetrie-Bereichs angepasst, sodass alle sichtbaren Felder ohne Scrollen hineinpassen, "
+        "egal wie schmal/breit oder hoch/niedrig der Bereich gerade gezogen ist - beim Ziehen des "
+        "Trennbalkens, beim Ändern der Fenstergröße und beim Ein-/Ausblenden einzelner Felder "
+        "(Abschnitt 6.2) passt sich die Größe jeweils sofort neu an. Die drei festen Stufen "
+        "darunter (Klein 75&#37;, Mittel 100&#37;, Groß 125&#37;) bleiben als bewusste, feste "
+        "Wahl verfügbar - wird eine davon gewählt, schaltet sich die automatische Anpassung ab, "
+        "bis wieder Automatisch gewählt wird. Ist selbst die kleinstmögliche automatische Größe "
+        "noch zu groß für den verfügbaren Platz, greift wie gehabt die vertikale Bildlaufleiste."
+    ))
+    story.extend(figure(
+        "dashboard_autofit_wide.png",
+        "Automatische Größe bei einem breiten, links angedockten Telemetrie-Bereich - "
+        "zweispaltig, große Schrift.",
+        max_width_mm=95,
+    ))
+    story.extend(figure(
+        "dashboard_autofit_narrow.png",
+        "Derselbe Bereich, nur der Trennbalken auf ca. ein Drittel der Breite gezogen - "
+        "Schrift, Symbole und Abstände verkleinern sich automatisch, die Feldgruppen "
+        "brauchen dabei keine Bildlaufleiste.",
+        max_width_mm=70,
     ))
     story.append(P(
         "Künstlicher Horizont und Höhenverlauf sind standardmäßig direkt oben in die "
@@ -471,6 +510,42 @@ def build_story():
         "Telemetrie-Panel eingebettet), das die tatsächlich geflogene Höhe fortlaufend über die "
         "verstrichene Zeit aufzeichnet. Die Zeiteinheit der X-Achse lässt sich zwischen Sekunden, "
         "Minuten und Stunden umschalten."
+    ))
+    story.append(P("6.7 Telemetrie-Variablen-Editor und eigene Dashboard-Felder", "h2"))
+    story.append(P(
+        "Telemetrie & Hardware -&gt; Telemetrie-Variablen-Editor... zeigt Telemetriewerte an, die "
+        "außerhalb der festen Dashboard-Felder aus Abschnitt 6.2 empfangen werden - bei MAVLink "
+        "z. B. benutzerdefinierte NAMED_VALUE_FLOAT/NAMED_VALUE_INT-Werte, wie sie manche "
+        "Flugsteuerungs-Firmwares für zusätzliche Sensoren (ESC-Temperatur, VTX-Temperatur, "
+        "eigene Skript-Variablen, ...) senden. Jede so erkannte Variable erscheint automatisch als "
+        "eigene Zeile, sobald sie das erste Mal empfangen wird - Wert live, mit editierbarem "
+        "Anzeigename und einem Löschen/Wiederherstellen-Knopf, falls einzelne Variablen dauerhaft "
+        "ignoriert werden sollen. Anzeigename und Löschstatus bleiben über Neustarts hinweg "
+        "gespeichert."
+    ))
+    story.append(P(
+        "Die Spalte <b>Dashboard</b> macht eine erkannte Variable zusätzlich zu einem eigenen "
+        "Feld in der Telemetrie-Leiste - in einer neuen Gruppe \"Benutzerdefiniert\", die "
+        "automatisch erscheint, sobald mindestens eine Variable angehakt ist, und wie jede andere "
+        "Feldgruppe an der automatischen Dashboard-Größe (Abschnitt 6.2), an der Ein-/Ausblend- "
+        "und Sortierfunktion (Dashboard anpassen..., Abschnitt 6.2) sowie an der Links/Rechts-"
+        "Andockung teilnimmt. Das Anhaken wirkt sofort - auch ohne aktive Telemetrieverbindung, "
+        "z. B. während des Einrichtens am Schreibtisch. Wird eine Variable wieder abgehakt oder "
+        "eine neue Verbindung/der Demo-Modus gestartet (wodurch die Liste erkannter Variablen neu "
+        "beginnt, siehe oben), verschwindet ihr Dashboard-Feld automatisch wieder; ein erneut "
+        "empfangener, weiterhin angehakter Schlüssel bekommt sein Feld genauso automatisch zurück."
+    ))
+    story.extend(figure(
+        "variable_editor_pin.png",
+        "Telemetrie-Variablen-Editor: zwei erkannte NAMED_VALUE-Variablen, beide über die "
+        "Dashboard-Spalte als eigenes Feld angeheftet.",
+        max_width_mm=140,
+    ))
+    story.extend(figure(
+        "dashboard_extra_field.png",
+        "Ergebnis in der Telemetrie-Leiste: die neue Gruppe \"Benutzerdefiniert\" mit den beiden "
+        "angehefteten Variablen, inklusive automatischer Größenanpassung.",
+        max_width_mm=85,
     ))
 
     # --- 7. Kartenoptionen ---
@@ -786,6 +861,7 @@ def build_story():
         "Akkuwarnung... - siehe Abschnitt 13.",
         "Warntöne... - siehe Abschnitt 13.1.",
         "MAVLink-STATUSTEXT-Konsole anzeigen - Rohtext-Meldungen der Flugsteuerung, farblich nach Schweregrad.",
+        "Telemetrie-Variablen-Editor... - siehe Abschnitt 6.7.",
         "Dashboard-Größe -&gt; Klein (75&#37;) / Mittel (100&#37;) / Groß (125&#37;) - skaliert "
         "Schrift, Icons und Abstände der gesamten Telemetrie-Leiste; wird beim ersten Start "
         "automatisch anhand der Bildschirmgröße vorbelegt (siehe Abschnitt 6.2).",
