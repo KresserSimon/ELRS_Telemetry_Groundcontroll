@@ -4,25 +4,24 @@ from __future__ import annotations
 import csv
 import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from core.telemetry_state import TelemetryState
-
-
-@dataclass
-class TrackPoint:
-    lat: float
-    lon: float
-    alt: Optional[float]
-    timestamp: float
+from export.flight_logger import ALL_FIELDS, field_value
 
 
 class TrackRecorder:
     def __init__(self) -> None:
-        self._points: List[TrackPoint] = []
+        # Full TelemetryState snapshots, not just position - the CSV export
+        # below can then carry every other telemetry field alongside the
+        # path, not just lat/lon/alt (see export_csv()). Safe to keep a
+        # direct reference rather than copying again: every TelemetryWorker
+        # already hands out an independent state.copy() before this is
+        # ever called (see core/telemetry_state.py's docstring) - nothing
+        # else goes on mutating it afterwards.
+        self._points: List[TelemetryState] = []
 
     def clear(self) -> None:
         self._points.clear()
@@ -30,7 +29,7 @@ class TrackRecorder:
     def add_point(self, state: TelemetryState) -> None:
         if not state.has_gps_fix():
             return
-        self._points.append(TrackPoint(state.lat, state.lon, state.alt, state.timestamp))
+        self._points.append(state)
 
     def __len__(self) -> int:
         return len(self._points)
@@ -78,16 +77,16 @@ class TrackRecorder:
         self._write_pretty(kml, path)
 
     def export_csv(self, path: str) -> None:
+        # Full ALL_FIELDS, not just position - reuses export/flight_logger.py's
+        # exact field set/serialization (field_value()) so this file is a
+        # real, complete flight log: it loads back through Log-Replay
+        # (telemetry/replay_worker.py) with every telemetry field intact,
+        # not just the flown path with everything else showing "n/v".
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["timestamp", "lat", "lon", "alt"])
-            for p in self._points:
-                writer.writerow([
-                    self._iso_time(p.timestamp),
-                    f"{p.lat:.7f}",
-                    f"{p.lon:.7f}",
-                    f"{p.alt:.1f}" if p.alt is not None else "",
-                ])
+            writer.writerow(ALL_FIELDS)
+            for state in self._points:
+                writer.writerow([field_value(state, field) for field in ALL_FIELDS])
 
     @staticmethod
     def _iso_time(ts: float) -> str:

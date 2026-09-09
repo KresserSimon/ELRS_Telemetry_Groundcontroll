@@ -794,12 +794,23 @@ def build_story():
     story.append(P(
         "Ein eigenes Overlay auf der Karte startet und pausiert die Aufzeichnung des geflogenen "
         "Pfads unabhängig von der Live-Anzeige. Exportieren... im Overlay fragt zunächst das "
-        "gewünschte Format ab - GPX, KML oder CSV."
+        "gewünschte Format ab - GPX, KML oder CSV. Die CSV-Variante schreibt dabei nicht nur "
+        "Position und Höhe, sondern alle Telemetriefelder (Akku, Link-Qualität, Flugmodus, ...) "
+        "im selben Spaltenformat wie das Fluglog aus Abschnitt 10 - eine so exportierte Datei "
+        "lässt sich also genauso vollständig über Log-Replay wiedergeben wie ein echtes Fluglog."
     ))
     story.append(P(
-        "Diese Aufzeichnung ist unabhängig vom Fluglog (Abschnitt 10): das Tracking speichert "
-        "nur Positionspunkte für einen späteren Pfad-Export, das Fluglog schreibt alle "
-        "Telemetriefelder kontinuierlich als Zeitreihe in eine CSV-Datei."
+        "Die Aufzeichnung selbst ist unabhängig vom Fluglog (Abschnitt 10): das Tracking läuft "
+        "als Overlay, gebunden an Start/Pause, und wird erst nachträglich per Exportieren... in "
+        "eine Datei geschrieben, während das Fluglog von Anfang an fortlaufend in eine CSV-Datei "
+        "schreibt - nur das jeweilige Dateiformat der CSV-Variante ist identisch."
+    ))
+    story.append(P(
+        "Da diese Aufzeichnung nur im Speicher liegt, bis sie exportiert wird, fragt die App "
+        "beim Beenden nach, falls noch ein aufgezeichneter, aber nicht exportierter Flugpfad "
+        "vorhanden ist: Speichern öffnet direkt den Format-Dialog (GPX/KML/CSV) und beendet erst "
+        "nach erfolgreichem Export, Nicht speichern verwirft die Aufzeichnung und beendet sofort, "
+        "Abbrechen bricht das Schließen selbst ab."
     ))
     story.append(P("10. Fluglog (CSV-Aufzeichnung)", "h1"))
     story.append(P(
@@ -807,7 +818,8 @@ def build_story():
         "sämtliche Telemetriedaten als Zeitreihe in einer CSV-Datei auf. Über Telemetrie & "
         "Hardware -&gt; Log-Einstellungen... lässt sich sowohl die Menge der aufgezeichneten "
         "Spalten als auch das Aufzeichnungsintervall (0,1 bis 60 Sekunden) frei wählen. Eine "
-        "aufgezeichnete Log-Datei lässt sich später über Tools & Simulation -&gt; Flug abspielen... "
+        "aufgezeichnete Log-Datei - oder ebenso eine per Flugpfad als CSV exportieren erzeugte "
+        "Datei aus Abschnitt 9 - lässt sich später über Tools & Simulation -&gt; Flug abspielen... "
         "wieder einladen und wie eine Live-Verbindung durch die App abspielen (Log-Replay), "
         "inklusive Wiedergabegeschwindigkeit, Sprungmarke und einer abschließenden "
         "Flugzusammenfassung. Eine einzelne fehlerhafte Zeile (z. B. durch manuelles Bearbeiten "

@@ -1,8 +1,15 @@
 """Continuous flight-data logger: writes a time-series CSV of telemetry
-fields at a configurable interval - independent of the GPX/KML flight-path
-export (track_export.py), which only ever records GPS points after the
-fact. Runs on a QTimer on the GUI thread; each tick is a cheap CSV row
-write, so this doesn't need its own thread.
+fields at a configurable interval, on a QTimer on the GUI thread (each
+tick is a cheap CSV row write, so this doesn't need its own thread).
+
+field_value()/ALL_FIELDS are also reused by export/track_export.py's own
+CSV export ("Flugpfad als CSV exportieren") so both CSV formats stay
+byte-for-byte identical wherever their field sets overlap - a file from
+either one loads back through telemetry/replay_worker.py's Log-Replay the
+same way. The two remain otherwise independent: this logger runs
+continuously at a fixed interval regardless of GPS fix, while
+track_export.py's recorder only keeps points that had one, and only
+turns them into a file after the fact.
 """
 from __future__ import annotations
 
@@ -25,6 +32,15 @@ ALL_FIELDS = (
 DEFAULT_FIELDS = ALL_FIELDS
 
 MIN_INTERVAL_MS = 50
+
+
+def field_value(state: TelemetryState, field: str):
+    if field == "timestamp":
+        return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(state.timestamp))
+    if field == "cell_voltages":
+        return "|".join(f"{v:.3f}" for v in state.cell_voltages) if state.cell_voltages else ""
+    value = getattr(state, field, "")
+    return "" if value is None else value
 
 
 class FlightLogger(QObject):
@@ -61,14 +77,5 @@ class FlightLogger(QObject):
         state = self._state_provider()
         if state is None or self._writer is None:
             return
-        self._writer.writerow([self._field_value(state, f) for f in self._fields])
+        self._writer.writerow([field_value(state, f) for f in self._fields])
         self._file.flush()
-
-    @staticmethod
-    def _field_value(state: TelemetryState, field: str):
-        if field == "timestamp":
-            return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(state.timestamp))
-        if field == "cell_voltages":
-            return "|".join(f"{v:.3f}" for v in state.cell_voltages) if state.cell_voltages else ""
-        value = getattr(state, field, "")
-        return "" if value is None else value

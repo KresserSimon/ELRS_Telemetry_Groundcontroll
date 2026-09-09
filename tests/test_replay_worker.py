@@ -72,6 +72,26 @@ class ParseFlightLogCsvTest(unittest.TestCase):
         self.assertEqual(len(states), 1)
         self.assertGreater(states[0].timestamp, 0)
 
+    def test_accepts_track_export_utc_z_suffixed_timestamps(self):
+        # Regression: export/track_export.py's CSV export ("Flugpfad als
+        # CSV exportieren") writes "%Y-%m-%dT%H:%M:%SZ" (UTC), not
+        # flight_logger.py's own "%Y-%m-%dT%H:%M:%S" (local, no
+        # suffix) - loading a track export for replay used to skip every
+        # single row (unparseable timestamp) and report "no usable
+        # telemetry data" even though the file was perfectly valid, just
+        # the other CSV format.
+        path = self._write(
+            ["timestamp", "lat", "lon", "alt"],
+            [
+                ["2026-09-09T19:24:01Z", "47.5029434", "9.7505176", "82.5"],
+                ["2026-09-09T19:24:02Z", "47.5030859", "9.7504973", "85.1"],
+            ],
+        )
+        states = parse_flight_log_csv(path)
+        self.assertEqual(len(states), 2)
+        self.assertAlmostEqual(states[0].lat, 47.5029434)
+        self.assertAlmostEqual(states[1].timestamp - states[0].timestamp, 1.0)
+
     def test_unparseable_timestamp_skips_only_that_row(self):
         # Regression: this used to raise an uncaught ValueError out of
         # parse_flight_log_csv(), which propagated past main_window.py's

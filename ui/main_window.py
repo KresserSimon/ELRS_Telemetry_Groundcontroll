@@ -296,6 +296,12 @@ class MainWindow(QMainWindow):
         self._map.add_overlay(self._route_overlay, "bottom-left")
 
         self._track_recording = False
+        # True once every currently-recorded point has been written out via
+        # _export_track() - closeEvent() offers to export before quitting
+        # only when this is False and there's actually something to lose
+        # (see _on_telemetry(), which flips it back to False on every new
+        # point). Starts True: an empty recorder has nothing to save.
+        self._track_exported = True
         self._track_auto_reference_position = None
         self._track_overlay = TrackOverlay()
         self._track_overlay.start_pause_clicked.connect(self._toggle_track_recording)
@@ -2073,6 +2079,7 @@ class MainWindow(QMainWindow):
                 if self._track_recording:
                     self._track_recorder.add_point(state)
                     self._track_overlay.update_count(len(self._track_recorder))
+                    self._track_exported = False
                 else:
                     self._check_auto_track_start(state)
             self._has_fix = True
@@ -2578,6 +2585,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, i18n.tr("msgbox_export_failed_title"), str(exc))
             return
 
+        self._track_exported = True
         self.statusBar().showMessage(i18n.tr("status_track_saved", path=path), 5000)
 
     # -------------------------------------------------------------- close
@@ -2662,6 +2670,28 @@ class MainWindow(QMainWindow):
         self._dashboard_fit_timer.start()
 
     def closeEvent(self, event) -> None:
+        if len(self._track_recorder) > 0 and not self._track_exported:
+            reply = QMessageBox.question(
+                self,
+                i18n.tr("msgbox_unsaved_track_title"),
+                i18n.tr("msgbox_unsaved_track_body"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+            if reply == QMessageBox.StandardButton.Yes:
+                self._export_track_prompt()
+                if not self._track_exported:
+                    # Picked "Save" but then backed out of the format/file
+                    # dialog inside _export_track_prompt() - treat that the
+                    # same as Cancel above rather than closing anyway, so a
+                    # change of mind mid-dialog can't silently discard data.
+                    event.ignore()
+                    return
+            # else StandardButton.No: close without saving, as explicitly chosen.
+
         if self._worker is not None:
             self._worker.stop()
         if self._pmtiles_dialog is not None:

@@ -460,6 +460,9 @@ _STRINGS = {
         "status_track_saved": "Flugpfad gespeichert: {path}",
         "msgbox_no_track_title": "Kein Flugpfad",
         "msgbox_no_track_body": "Es wurden noch keine GPS-Punkte aufgezeichnet.",
+        "msgbox_unsaved_track_title": "Nicht gespeicherter Flugpfad",
+        "msgbox_unsaved_track_body": "Der aufgezeichnete Flugpfad wurde noch nicht exportiert. "
+            "Vor dem Beenden speichern?",
         "msgbox_export_failed_title": "Export fehlgeschlagen",
         "msgbox_no_usb_title": "Kein USB-Port",
         "msgbox_no_usb_body": "Bitte einen seriellen Port waehlen oder eingeben.",
@@ -1006,6 +1009,9 @@ _STRINGS = {
         "status_track_saved": "Flight path saved: {path}",
         "msgbox_no_track_title": "No Flight Path",
         "msgbox_no_track_body": "No GPS points have been recorded yet.",
+        "msgbox_unsaved_track_title": "Unsaved Flight Path",
+        "msgbox_unsaved_track_body": "The recorded flight path hasn't been exported yet. "
+            "Save it before closing?",
         "msgbox_export_failed_title": "Export Failed",
         "msgbox_no_usb_title": "No USB Port",
         "msgbox_no_usb_body": "Please select or enter a serial port.",

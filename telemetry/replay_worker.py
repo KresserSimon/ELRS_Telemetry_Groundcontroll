@@ -8,11 +8,23 @@ output connection while replaying - no separate replay-aware code path
 needed anywhere else in the app.
 
 CSV timestamps are only second-resolution (see flight_logger.py's
-_field_value()) - playback timing between samples is therefore only as
+field_value()) - playback timing between samples is therefore only as
 fine-grained as the original logging interval, not smoother than that.
+
+Also accepts export/track_export.py's CSV export (Datei -> Flugpfad als
+CSV exportieren) as a replay source, not just flight_logger.py's own
+format: both start with the same "timestamp,lat,lon,alt" shape (easy to
+load the wrong one by accident, both being plain *.csv), but
+track_export.py's _iso_time() writes UTC with a trailing "Z"
+(%Y-%m-%dT%H:%M:%SZ) while flight_logger.py writes local time without one
+(%Y-%m-%dT%H:%M:%S) - see _parse_timestamp(). A track export naturally
+carries only position/altitude, no other telemetry - replay still works
+for it (the flight path on the map, mostly "n/v" on the dashboard),
+exactly as tolerant as an ALL_FIELDS log with most columns missing.
 """
 from __future__ import annotations
 
+import calendar
 import csv
 import queue
 import time
@@ -63,6 +75,21 @@ def _parse_value(field: str, raw: str):
 def _parse_timestamp(raw: str) -> Optional[float]:
     if raw == "":
         return None
+    # track_export.py's format (UTC, trailing "Z") needs calendar.timegm()
+    # rather than time.mktime() - mktime() interprets its struct_time
+    # argument as local time regardless of the "Z", which would shift
+    # every parsed value by the local UTC offset. That offset is constant
+    # across a whole file, so playback *gaps* (this value's only real use,
+    # see ReplayWorker.run()) would still come out right even with the
+    # wrong function - but getting the absolute epoch value itself
+    # correct too costs nothing here and avoids that footgun for any
+    # future caller that assumes TelemetryState.timestamp is a real
+    # Unix timestamp.
+    if raw.endswith("Z"):
+        try:
+            return float(calendar.timegm(time.strptime(raw, "%Y-%m-%dT%H:%M:%SZ")))
+        except ValueError:
+            return None
     try:
         return time.mktime(time.strptime(raw, "%Y-%m-%dT%H:%M:%S"))
     except ValueError:
