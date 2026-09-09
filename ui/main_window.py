@@ -1,6 +1,7 @@
 """Main application window: map + dashboard + menus, wired to a telemetry worker."""
 from __future__ import annotations
 
+import csv
 import time
 from pathlib import Path
 
@@ -1233,7 +1234,12 @@ class MainWindow(QMainWindow):
             return
         try:
             states = parse_flight_log_csv(path)
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError, csv.Error) as exc:
+            # Row-level parse issues (a garbled field value, a bad
+            # timestamp) are already handled inside parse_flight_log_csv()
+            # itself (skip the row/field, never raise) - this only catches
+            # file-level failures: can't open/read it, or it isn't valid
+            # UTF-8/CSV at all.
             QMessageBox.critical(self, i18n.tr("msgbox_replay_load_failed_title"), str(exc))
             return
         if not states:
@@ -1277,7 +1283,12 @@ class MainWindow(QMainWindow):
             return
         try:
             states = parse_flight_log_csv(path)
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError, csv.Error) as exc:
+            # Row-level parse issues (a garbled field value, a bad
+            # timestamp) are already handled inside parse_flight_log_csv()
+            # itself (skip the row/field, never raise) - this only catches
+            # file-level failures: can't open/read it, or it isn't valid
+            # UTF-8/CSV at all.
             QMessageBox.critical(self, i18n.tr("msgbox_replay_load_failed_title"), str(exc))
             return
         summary = summarize(states)

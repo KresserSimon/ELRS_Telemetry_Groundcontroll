@@ -72,6 +72,34 @@ class ParseFlightLogCsvTest(unittest.TestCase):
         self.assertEqual(len(states), 1)
         self.assertGreater(states[0].timestamp, 0)
 
+    def test_unparseable_timestamp_skips_only_that_row(self):
+        # Regression: this used to raise an uncaught ValueError out of
+        # parse_flight_log_csv(), which propagated past main_window.py's
+        # `except OSError` and crashed the whole app when opening a
+        # corrupt/manually-edited log for replay.
+        path = self._write(
+            ["timestamp", "lat"],
+            [
+                ["2026-01-01T12:00:00", "1.0"],
+                ["not-a-timestamp", "2.0"],
+                ["2026-01-01T12:00:02", "3.0"],
+            ],
+        )
+        states = parse_flight_log_csv(path)
+        self.assertEqual([s.lat for s in states], [1.0, 3.0])
+
+    def test_garbled_int_field_degrades_to_none_not_raising(self):
+        path = self._write(["timestamp", "satellites"], [["2026-01-01T12:00:00", "not-a-number"]])
+        states = parse_flight_log_csv(path)
+        self.assertEqual(len(states), 1)
+        self.assertIsNone(states[0].satellites)
+
+    def test_garbled_cell_voltages_degrades_to_none_not_raising(self):
+        path = self._write(["timestamp", "cell_voltages"], [["2026-01-01T12:00:00", "not|numbers"]])
+        states = parse_flight_log_csv(path)
+        self.assertEqual(len(states), 1)
+        self.assertIsNone(states[0].cell_voltages)
+
     def test_rows_stay_in_file_order(self):
         path = self._write(
             ["timestamp", "lat"],

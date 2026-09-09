@@ -810,7 +810,9 @@ def build_story():
         "aufgezeichnete Log-Datei lässt sich später über Tools & Simulation -&gt; Flug abspielen... "
         "wieder einladen und wie eine Live-Verbindung durch die App abspielen (Log-Replay), "
         "inklusive Wiedergabegeschwindigkeit, Sprungmarke und einer abschließenden "
-        "Flugzusammenfassung."
+        "Flugzusammenfassung. Eine einzelne fehlerhafte Zeile (z. B. durch manuelles Bearbeiten "
+        "der CSV-Datei entstanden) bricht das Laden nicht ab - sie wird übersprungen, alle "
+        "übrigen Zeilen werden ganz normal wiedergegeben."
     ))
     story.append(P("11. Plan-Modus", "h1"))
     story.append(P(

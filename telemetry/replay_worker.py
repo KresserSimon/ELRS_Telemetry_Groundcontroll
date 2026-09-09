@@ -28,14 +28,28 @@ _MAX_GAP_MS = 2000  # cap so a paused-logging gap doesn't stall playback for min
 
 
 def _parse_value(field: str, raw: str):
+    # A malformed value in any of these (a manually edited log, a file
+    # half-written when the app was killed mid-log, a column that turns
+    # out to hold something unexpected) degrades that one field to None
+    # rather than raising - the same "missing column -> None" tolerance
+    # parse_flight_log_csv() already documents for absent columns,
+    # extended to present-but-garbled ones. Letting a ValueError escape
+    # here used to propagate all the way up through the menu action that
+    # opens a replay file, past a bare `except OSError` that never caught
+    # it - an uncaught exception in a Qt slot, which crashes the whole app
+    # rather than just failing to load one field.
     if raw == "":
         return None
-    if field == "timestamp":
-        return time.mktime(time.strptime(raw, "%Y-%m-%dT%H:%M:%S"))
     if field == "cell_voltages":
-        return [float(v) for v in raw.split("|") if v]
+        try:
+            return [float(v) for v in raw.split("|") if v]
+        except ValueError:
+            return None
     if field in _INT_FIELDS:
-        return int(float(raw))
+        try:
+            return int(float(raw))
+        except ValueError:
+            return None
     if field == "connected":
         return raw.strip().lower() in ("true", "1")
     if field == "flight_mode":
@@ -46,11 +60,30 @@ def _parse_value(field: str, raw: str):
         return raw
 
 
+def _parse_timestamp(raw: str) -> Optional[float]:
+    if raw == "":
+        return None
+    try:
+        return time.mktime(time.strptime(raw, "%Y-%m-%dT%H:%M:%S"))
+    except ValueError:
+        return None
+
+
 def parse_flight_log_csv(path: str) -> List[TelemetryState]:
     """Tolerant of any subset/order of export/flight_logger.py's ALL_FIELDS
     columns (the logger's field selection is user-configurable) - a
     missing column just leaves that TelemetryState field at its default
-    (usually None), an unknown/future column is silently ignored."""
+    (usually None), an unknown/future column is silently ignored, and a
+    garbled value in a present column (see _parse_value()) degrades to
+    None rather than aborting the whole load.
+
+    A row whose *timestamp* value fails to parse (as opposed to a missing
+    timestamp column entirely, handled below) is skipped outright instead
+    of falling back to None/"now": ReplayWorker.run() subtracts adjacent
+    timestamps to time playback gaps, and a None there would raise a
+    TypeError, while a silent "now" wall-clock fallback would corrupt that
+    timing for real, differently-dated neighbouring rows - one skipped
+    sample is a strictly better failure mode than either."""
     states: List[TelemetryState] = []
     with open(path, "r", newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
@@ -61,12 +94,24 @@ def parse_flight_log_csv(path: str) -> List[TelemetryState]:
         has_timestamp = "timestamp" in header
         for i, row in enumerate(reader):
             state = TelemetryState(source="replay", connected=True)
+            skip_row = False
             for field, raw in zip(header, row):
                 if field == "source" or field not in TelemetryState.__dataclass_fields__:
+                    continue
+                if field == "timestamp":
+                    parsed = _parse_timestamp(raw)
+                    if parsed is None:
+                        if raw != "":
+                            skip_row = True
+                            break
+                        continue
+                    state.timestamp = parsed
                     continue
                 value = _parse_value(field, raw)
                 if value is not None:
                     setattr(state, field, value)
+            if skip_row:
+                continue
             if not has_timestamp:
                 # No real timestamps recorded - fall back to a synthetic,
                 # monotonically increasing one so playback ordering/timing
