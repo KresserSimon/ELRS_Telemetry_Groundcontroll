@@ -869,6 +869,147 @@ gearbeitet wird:
 
 ---
 
+### P3: Live-Flugverkehr (ADS-B), nur online
+
+**Nutzeranfrage (wörtlich):** "Wie schwer ist es noch ein Modul einzubauen
+um den Flugverkehr anzuzeigen (nur wenn online)" - Folgeanforderung in
+derselben Sitzung: "Ja auch mit einer definierbaren Maximalhöhe - es nützt
+mir nichts wenn ich Verkehrsflugzeuge in 10km Höhe sehe".
+
+**Ziel:** Bemannten Flugverkehr (ADS-B) in der Nähe der Boden-/Flugposition
+live auf der Karte anzeigen, mit einstellbarer Maximalhöhe, damit nur für
+den eigenen Einsatz relevanter Verkehr (niedrig fliegend, potenziell im
+selben Luftraum) angezeigt wird statt jedes Linienflugzeugs im Reiseflug.
+Komplett optional/degradiert sauber, wenn kein Internet verfügbar ist -
+dieselbe Kategorie wie der bestehende OpenAIP-Luftraum-Import
+(`core/openaip_import.py`), nur mit periodischem statt einmaligem Abruf und
+ohne den dortigen Cache-Fallback (siehe Risiken unten, Begründung).
+
+**Bestehendes Vorbild, warum das kein Neuland ist:**
+`core/openaip_import.py` holt bereits GeoJSON-Luftraumdaten für eine
+Bounding-Box um einen Referenzpunkt von einem konfigurierbaren HTTP-Endpunkt
+(`core/openaip_config.py`), mit robustem Fehlerpfad (`OpenAipError`,
+Netzwerkfehler -> Cache-Fallback statt Absturz). Das neue Modul übernimmt
+denselben Grundaufbau (Bbox-Query, konfigurierbare Basis-URL, sauberer
+Fehlerpfad), aber als **wiederholter** Abruf (Polling) statt Einmal-Fetch,
+weil Flugverkehr sich laufend bewegt.
+
+**API-Wahl (bewusst nicht vorab endgültig festgelegt, siehe Risiken):**
+Empfehlung airplanes.live (`https://api.airplanes.live/v2/point/{lat}/{lon}/{radius_nm}`,
+kein API-Key nötig, großzügige Grenzen) als Default, mit OpenSky Network
+(`https://opensky-network.org/api/states/all?lamin=...`) als dokumentierte
+Alternative - beide liefern die gleichen Kernfelder (icao24, callsign, lat,
+lon, Höhe, Heading, Ground-/Vertikalgeschwindigkeit). Analog zu
+`openaip_config.py` wird die Basis-URL/der Provider konfigurierbar gehalten,
+kein Hardcoding auf einen einzigen Anbieter.
+
+**Betroffene bestehende Dateien:**
+- `ui/main_window.py` - `_on_telemetry()` bekommt **keinen** neuen Aufruf
+  (Flugverkehr ist unabhängig vom Telemetriefluss); stattdessen ein neuer,
+  eigenständiger `QTimer`, der unabhängig vom Verbindungsstatus läuft
+  (Flugverkehr soll auch ohne aktive Modell-Telemetrie sichtbar sein, z. B.
+  vor dem Start).
+- `ui/map_widget.py` / `ui/map_template.py` / `ui/maplibre_template.py` -
+  neue Render-Funktion `setTraffic(aircraft_list)`, analog zu
+  `setNoFlyZones()`/`setGeofence()`: Flugzeug-Icon pro Kontakt, rotiert nach
+  Heading, Tooltip mit Rufzeichen + Höhe. Muss wie beim Geofence in
+  **beiden** Templates ergänzt werden.
+- `core/openaip_config.py` als Vorbild (nicht direkt wiederverwendet, da
+  anderer Datentyp/Provider) für ein neues `core/traffic_config.py`.
+
+**Neue Module:**
+- `core/traffic_import.py` - HTTP-Client für den gewählten Provider,
+  Bbox-Query um einen Referenzpunkt (Bodenstations-Position falls gesetzt,
+  sonst Karten-Mittelpunkt/Home), Parsing der Antwort in eine reine
+  `AircraftState`-Dataclass-Liste (icao24, callsign, lat, lon, alt_m,
+  heading_deg, groundspeed_ms, vertical_rate_ms, last_contact). Reine,
+  leicht mockbare Funktion nach demselben Muster wie
+  `openaip_import.geojson_to_zones()`.
+- `core/traffic_config.py` - Persistenz (`traffic_settings.json`, wie
+  `openaip_config.py`): Provider/Basis-URL, Radius (km/nm), Poll-Intervall,
+  **Maximalhöhe (m)**, an/aus.
+- `core/traffic_worker.py` - `QThread` mit eigenem Timer-Takt (kein
+  `TelemetryWorker`, da kein Telemetrieprotokoll, aber gleiches
+  Signal-Muster: `traffic_updated = pyqtSignal(list)`,
+  `traffic_error = pyqtSignal(str)`), ruft `traffic_import.fetch_traffic()`
+  in festem Intervall auf (Default z. B. alle 12-15 s, s. Risiken zu
+  Rate-Limits) und filtert client-seitig nach Maximalhöhe, bevor das Signal
+  emittiert wird.
+- `ui/traffic_settings_dialog.py` - Dialog analog zu
+  `GeofenceSettingsDialog`/`OpenAipSettingsDialog`: Radius, Poll-Intervall,
+  Provider/Basis-URL, **Maximalhöhe (m, mit Erklärtext "z. B. 1500 m -
+  blendet Linienverkehr im Reiseflug aus")**, an/aus.
+
+**Maximalhöhen-Filter - Designentscheidung (bewusst getroffen, nicht
+geraten):** Die von den APIs gelieferte Höhe ist MSL (barometrisch oder
+geometrisch, je nach Provider/Sensor), nicht AGL. Für den Zweck "keine
+Flugzeuge im Reiseflug sehen" reicht ein einfacher Vergleich gegen einen
+vom Nutzer gesetzten MSL-Schwellwert (Default-Vorschlag: 1500 m) - eine
+Umrechnung auf AGL über `core/elevation_cache.py`/`core/terrain.py` (wie
+beim Höhenverlauf) wäre bei den hier relevanten Höhenunterschieden
+(hunderte Meter Gelände vs. mehrere Kilometer Reiseflughöhe) unnötige
+Komplexität und wird bewusst **nicht** gebaut, solange kein Anwendungsfall
+mit stark bergigem Gelände nahe der Schwelle auftritt.
+
+**Datenfluss/Integrationspunkt:** `TrafficWorker.traffic_updated` ->
+`MainWindow` -> `self._map.set_traffic(aircraft_list)`. Bei
+`traffic_error` (kein Netzwerk, Timeout, Rate-Limit-Antwort): **kein**
+Absturz, **kein** stiller Fallback auf zuletzt bekannte Positionen (anders
+als bei OpenAIP - veraltete Live-Verkehrspositionen wären aktiv
+irreführend, nicht nur unvollständig), sondern Liste leeren + kleine
+Statusanzeige "Verkehr: keine Daten" (gleiche UX-Vorsicht wie beim
+Energiebudget: eine erfundene/veraltete Zahl ist hier gefährlicher als
+keine).
+
+**UI-/Menüänderungen:** Neuer Sichtbarkeits-Toggle "Flugverkehr" unter
+`Anzeige & Karte` (gleiche Stelle wie Sperrzonen/Geofence-Toggle), neuer
+Menüpunkt "Flugverkehr-Einstellungen..." dort oder unter `Einstellungen`
+(Radius/Intervall/Maximalhöhe/Provider).
+
+**Neue Settings-Keys:** neue Datei `traffic_settings.json`:
+`{enabled, provider, base_url, radius_km, poll_interval_s,
+max_altitude_m}` (Default `max_altitude_m` z. B. 1500). `ui_state.json`:
+`traffic_overlay_visible` (reiner Anzeige-Toggle, unabhängig vom
+Abruf-An/Aus, gleiches Muster wie Geofence sichtbar/aktiv).
+
+**Risiken/Sonderfälle:**
+- Öffentliche ADS-B-APIs sind rate-limitiert (OpenSky anonym: ca. 400
+  Requests/Tag) - ein zu kurzes Poll-Intervall sperrt die eigene IP;
+  Default-Intervall bewusst konservativ, Radius klein halten (nur "in der
+  Nähe" relevant, kein europaweiter Abruf).
+- Kein API-Key-Fallback eingeplant: falls der gewählte Anbieter künftig
+  einen Key verlangt/seine Nutzungsbedingungen ändert, ist die
+  konfigurierbare Basis-URL (wie bei OpenAIP) der Absicherungsweg, kein
+  Code-Update nötig, nur ein anderer Endpunkt/eigener Proxy.
+- Referenzpunkt für die Bbox ist die Bodenstations-Position (P2) falls
+  gesetzt, sonst Karten-Mittelpunkt - **nicht** die Modellposition, da
+  Flugverkehr auch ohne aktive Verbindung/vor dem Start interessant ist.
+- MSL- statt AGL-Filterung ist eine bewusste Vereinfachung (siehe oben),
+  im Handbuch explizit erwähnen, damit ein Nutzer in sehr bergigem Gelände
+  die Schwelle bewusst anpasst statt sich auf "AGL" zu verlassen.
+- Icon-Dichte bei viel Verkehr (z. B. nahe eines Großflughafens trotz
+  Höhenfilter) - ggf. eine Obergrenze der gleichzeitig angezeigten Kontakte
+  einplanen, analog `MAX_PATH_POINTS`.
+
+**Testansatz:** Unit-Tests für `traffic_import`s Antwort-Parsing (bekannte
+Beispiel-JSON pro Provider -> erwartete `AircraftState`-Liste) und für die
+reine Maximalhöhen-Filterfunktion (Tabelle bekannter Höhen -> erwartet
+durchgelassen/gefiltert). HTTP-Aufrufe gemockt, kein echtes Netzwerk in
+Tests. Kein Demo-Modus-Äquivalent zwingend nötig (das Feature ist per
+Definition online-only), optional ein paar synthetische Kontakte im
+Demo-Modus für UI-Tests ohne Internetzugang.
+
+**Handbuch-Abschnitt:** Neuer Abschnitt "Flugverkehr (ADS-B)" im
+Kapitel zu Anzeige & Karte, mit explizitem Hinweis: nur online verfügbar,
+MSL-basierte Maximalhöhe, kein Ersatz für offizielle
+Luftraumbeobachtung/Sichtflugregeln.
+
+**Grober Aufwand:** 2.5-3 Tage (die beiden Kartentemplates + der neue
+Settings-Dialog sind der größere Teil, nicht der API-Client selbst - siehe
+gleiche Erfahrung beim Geofence-Feature).
+
+---
+
 ### P3 — nur grob skizziert
 
 Ausgewählt für die nächste Umsetzungsrunde (die übrigen, ursprünglich hier
