@@ -379,3 +379,20 @@ class MapWidget(QWebEngineView):
 
     def set_geofence_visible(self, enabled: bool) -> None:
         self.page().runJavaScript(f"setGeofenceVisible({'true' if enabled else 'false'});")
+
+    def render_traffic(self, aircraft: Iterable) -> None:
+        payload = [
+            {
+                "icao24": ac.icao24,
+                "callsign": ac.callsign,
+                "lat": ac.lat,
+                "lon": ac.lon,
+                "alt_m": ac.alt_m,
+                "heading_deg": ac.heading_deg,
+            }
+            for ac in aircraft
+        ]
+        self.page().runJavaScript(f"setTraffic({json.dumps(payload)});")
+
+    def set_traffic_visible(self, enabled: bool) -> None:
+        self.page().runJavaScript(f"setTrafficVisible({'true' if enabled else 'false'});")

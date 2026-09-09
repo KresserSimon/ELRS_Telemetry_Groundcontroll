@@ -37,6 +37,12 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     transform-origin: 50% 50%;
   }
   .drone-icon svg { width: 22px; height: 22px; filter: drop-shadow(0 0 2px rgba(0,0,0,0.6)); }
+  .traffic-icon {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transform-origin: 50% 50%;
+  }
+  .traffic-icon svg { width: 18px; height: 18px; filter: drop-shadow(0 0 2px rgba(0,0,0,0.6)); }
   .route-wp-dot {
     width: 20px; height: 20px; border-radius: 50%;
     background: #2ecc71; color: #ffffff; font-size: 11px; font-weight: 600;
@@ -724,6 +730,66 @@ MAP_HTML_TEMPLATE = """<!DOCTYPE html>
     var onMap = map.hasLayer(geofenceLayer);
     if (enabled && !onMap) { geofenceLayer.addTo(map); }
     else if (!enabled && onMap) { map.removeLayer(geofenceLayer); }
+  }
+
+  // ------------------------------------------------------ live air traffic
+  //
+  // Contacts are already altitude-filtered by core/traffic_worker.py before
+  // ever reaching here - this layer just draws whatever it's given, keyed
+  // by icao24 so a contact's marker is moved/updated in place rather than
+  // removed and re-added every poll. Icon rotation uses the exact same
+  // "own transform = true heading" formula as the drone icon above
+  // (applyRotation()) - algebraically independent of the current map
+  // rotation (north-up or heading-up), not just coincidentally correct in
+  // one of the two modes.
+
+  var trafficMarkers = {};  // icao24 -> L.marker
+  var trafficVisible = true;
+  var trafficLayer = L.layerGroup();
+  var trafficIconSvg = '<svg viewBox="0 0 24 24">'
+    + '<path d="M12 1 L13.4 8.5 L22 13 L22 15 L13.2 13 L13.8 19.5 L17.5 22 L17.5 23 L12 21.7 L6.5 23 L6.5 22 L10.2 19.5 L10.8 13 L2 15 L2 13 L10.6 8.5 Z" '
+    + 'fill="#f2c94c" stroke="#1a1a1a" stroke-width="0.6"/></svg>';
+
+  function trafficLabel(ac) {
+    var name = ac.callsign || ac.icao24;
+    if (ac.alt_m === null || ac.alt_m === undefined) { return name; }
+    return name + ' · ' + Math.round(ac.alt_m) + ' m';
+  }
+
+  function setTraffic(aircraft) {
+    var seen = {};
+    aircraft.forEach(function (ac) {
+      seen[ac.icao24] = true;
+      var marker = trafficMarkers[ac.icao24];
+      if (!marker) {
+        marker = L.marker([ac.lat, ac.lon], {
+          icon: L.divIcon({ className: 'traffic-icon', html: trafficIconSvg, iconSize: [18, 18], iconAnchor: [9, 9] })
+        });
+        marker.bindTooltip('<span class="nfz-tooltip-text"></span>', { sticky: true, direction: 'top' });
+        marker.on('tooltipopen', function (e) { registerCounterRotated(e.tooltip); });
+        trafficMarkers[ac.icao24] = marker;
+        trafficLayer.addLayer(marker);
+      } else {
+        marker.setLatLng([ac.lat, ac.lon]);
+      }
+      marker.setTooltipContent('<span class="nfz-tooltip-text">' + escapeHtml(trafficLabel(ac)) + '</span>');
+      var el = marker.getElement();
+      var svg = el && el.querySelector('svg');
+      if (svg && ac.heading_deg !== null && ac.heading_deg !== undefined) {
+        svg.style.transform = 'rotate(' + ac.heading_deg + 'deg)';
+      }
+    });
+    Object.keys(trafficMarkers).forEach(function (icao) {
+      if (!seen[icao]) { trafficLayer.removeLayer(trafficMarkers[icao]); delete trafficMarkers[icao]; }
+    });
+    if (trafficVisible && !map.hasLayer(trafficLayer)) { trafficLayer.addTo(map); }
+  }
+
+  function setTrafficVisible(enabled) {
+    trafficVisible = enabled;
+    var onMap = map.hasLayer(trafficLayer);
+    if (enabled && !onMap) { trafficLayer.addTo(map); }
+    else if (!enabled && onMap) { map.removeLayer(trafficLayer); }
   }
 
   if (typeof qt !== 'undefined' && qt.webChannelTransport) {

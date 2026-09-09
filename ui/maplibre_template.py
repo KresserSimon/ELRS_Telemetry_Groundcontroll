@@ -41,6 +41,7 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     padding: 3px 7px; border-radius: 5px; border: 1px solid #0d1117; white-space: nowrap;
   }
   .drone-icon-el, .home-icon-el { pointer-events: none; }
+  .traffic-icon-el { cursor: default; }
   .route-wp-dot {
     width: 20px; height: 20px; border-radius: 50%;
     background: #2ecc71; color: #ffffff; font-size: 11px; font-weight: 600;
@@ -531,6 +532,76 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     });
   }
 
+  // ------------------------------------------------------ live air traffic
+  //
+  // DOM markers, same approach as the drone/home icons above - MapLibre
+  // markers stay screen-upright by default (see applyRotation()'s
+  // comment), so each contact's own rotation has to explicitly subtract
+  // the map's current bearing. Re-applied from updateDrone() on every
+  // position/heading tick (up to 5Hz), not just when new traffic data
+  // arrives, since heading-up mode can rotate the map far more often than
+  // a ~15s traffic poll - a contact would otherwise show a stale heading
+  // relative to the now-rotated map until its next poll.
+
+  var trafficIconSvg = '<svg viewBox="0 0 24 24">'
+    + '<path d="M12 1 L13.4 8.5 L22 13 L22 15 L13.2 13 L13.8 19.5 L17.5 22 L17.5 23 L12 21.7 L6.5 23 L6.5 22 L10.2 19.5 L10.8 13 L2 15 L2 13 L10.6 8.5 Z" '
+    + 'fill="#f2c94c" stroke="#1a1a1a" stroke-width="0.6"/></svg>';
+
+  var trafficMarkers = {};  // icao24 -> { marker, el, heading }
+  var trafficVisible = true;
+
+  function trafficLabel(ac) {
+    var name = ac.callsign || ac.icao24;
+    if (ac.alt_m === null || ac.alt_m === undefined) { return name; }
+    return name + ' · ' + Math.round(ac.alt_m) + ' m';
+  }
+
+  function applyTrafficRotation() {
+    if (!map) return;
+    Object.keys(trafficMarkers).forEach(function (icao) {
+      var entry = trafficMarkers[icao];
+      var svg = entry.el.querySelector('svg');
+      if (svg && entry.heading !== null && entry.heading !== undefined) {
+        svg.style.transform = 'rotate(' + (entry.heading - map.getBearing()) + 'deg)';
+      }
+    });
+  }
+
+  function setTraffic(aircraft) {
+    var seen = {};
+    aircraft.forEach(function (ac) {
+      seen[ac.icao24] = true;
+      var entry = trafficMarkers[ac.icao24];
+      if (!entry) {
+        var el = document.createElement('div');
+        el.className = 'traffic-icon-el';
+        el.style.width = '18px';
+        el.style.height = '18px';
+        el.innerHTML = trafficIconSvg;
+        var marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([ac.lon, ac.lat]);
+        if (trafficVisible) { marker.addTo(map); }
+        entry = { marker: marker, el: el, heading: null };
+        trafficMarkers[ac.icao24] = entry;
+      } else {
+        entry.marker.setLngLat([ac.lon, ac.lat]);
+      }
+      entry.el.title = trafficLabel(ac);
+      if (ac.heading_deg !== null && ac.heading_deg !== undefined) { entry.heading = ac.heading_deg; }
+    });
+    Object.keys(trafficMarkers).forEach(function (icao) {
+      if (!seen[icao]) { trafficMarkers[icao].marker.remove(); delete trafficMarkers[icao]; }
+    });
+    applyTrafficRotation();
+  }
+
+  function setTrafficVisible(enabled) {
+    trafficVisible = enabled;
+    Object.keys(trafficMarkers).forEach(function (icao) {
+      var entry = trafficMarkers[icao];
+      if (enabled) { entry.marker.addTo(map); } else { entry.marker.remove(); }
+    });
+  }
+
   // --------------------------------------------------------- drone updates
 
   var autoCenter = true;
@@ -574,6 +645,7 @@ MAPLIBRE_HTML_TEMPLATE = """<!DOCTYPE html>
     if (heading !== null && heading !== undefined) { lastHeading = heading; }
     if (headingUp) { map.setBearing(lastHeading || 0); }
     applyRotation();
+    applyTrafficRotation();
 
     if (!hasCentered) {
       var homeEl = document.createElement('div');

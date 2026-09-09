@@ -66,6 +66,8 @@ from core.route import RouteManager
 from core.telemetry_catalog import TelemetryVariableCatalog
 from core.telemetry_state import TelemetryState
 from core.tracker_output import TrackerOutputSender
+from core.traffic_config import load_traffic_config, save_traffic_config
+from core.traffic_worker import TrafficWorker
 from core.ui_state_config import load_ui_state, save_ui_state
 from export.flight_logger import ALL_FIELDS, FlightLogger
 from export.nfz_import import import_nfz_file
@@ -98,6 +100,7 @@ from ui.map_widget import MapWidget, pmtiles_dir
 from ui.mode_change_dialog import ModeChangeDialog
 from ui.model_editor_dialog import ModelEditorDialog
 from ui.model_profile_dialog import ModelProfileDialog
+from ui.traffic_settings_dialog import TrafficSettingsDialog
 from ui.openaip_settings_dialog import OpenAipSettingsDialog
 from ui.flight_summary_dialog import FlightSummaryDialog
 from ui.pmtiles_download_dialog import PMTilesDownloadDialog
@@ -377,6 +380,13 @@ class MainWindow(QMainWindow):
         self._plan_mode = False
         self._initial_show_handled = False
         self._gs_position = load_gs_position()  # GsPosition | None
+        self._traffic_config = load_traffic_config()
+        self._traffic_reference = self._compute_traffic_reference()  # refreshed further in _check_heartbeat()
+        self._traffic_worker = TrafficWorker(lambda: self._traffic_reference)
+        self._traffic_worker.traffic_updated.connect(self._on_traffic_updated)
+        self._traffic_worker.traffic_error.connect(self._on_traffic_error)
+        self._traffic_worker.update_config(self._traffic_config)
+        self._traffic_worker.start()
         self._mission_session = None  # Optional[MissionUploadSession | MissionDownloadSession]
         self._command_session = None  # Optional[CommandSession] (RTH/mode-change)
         self._mission_progress_dialog = None  # Optional[QProgressDialog]
@@ -410,6 +420,7 @@ class MainWindow(QMainWindow):
             self._map.set_coord_overlay_visible(self._coord_overlay_action.isChecked())
             self._map.set_heatmap_enabled(self._heatmap_action.isChecked())
             self._map.set_nfz_visible(self._nfz_visible_action.isChecked())
+            self._map.set_traffic_visible(self._traffic_visible_action.isChecked())
             self._map.set_base_layer(self._ui_state.get("base_layer", "osm"))
             self._map.set_vehicle_type(self._ui_state.get("vehicle_type", "quad"))
             self._map.set_path_point_threshold(self._path_point_threshold_m)
@@ -624,6 +635,18 @@ class MainWindow(QMainWindow):
         self._geofence_enabled_action.setCheckable(True)
         self._geofence_enabled_action.setChecked(self._ui_state.get("geofence_enabled", False))
         self._geofence_enabled_action.toggled.connect(self._on_geofence_enabled_toggled)
+
+        # Live air traffic (ADS-B) - a single visibility toggle here, same
+        # spot as NFZ/geofence; whether the underlying poller is allowed to
+        # fetch at all lives in the settings dialog (menu_traffic_settings,
+        # under Einstellungen), since there's meaningfully more to
+        # configure there (provider, radius, altitude filter) than a bare
+        # on/off checkbox could hold - see ui/traffic_settings_dialog.py.
+        self._traffic_visible_action = view_map_menu.addAction("")
+        self._i18n_actions.append((self._traffic_visible_action, "menu_traffic_visible"))
+        self._traffic_visible_action.setCheckable(True)
+        self._traffic_visible_action.setChecked(self._ui_state.get("traffic_visible", True))
+        self._traffic_visible_action.toggled.connect(self._map.set_traffic_visible)
 
         nfz_menu.addSeparator()
         openaip_settings_action = nfz_menu.addAction("")
@@ -975,6 +998,10 @@ class MainWindow(QMainWindow):
         gs_position_action = settings_menu.addAction("")
         self._i18n_actions.append((gs_position_action, "menu_gs_position"))
         gs_position_action.triggered.connect(self._open_gs_position_settings)
+
+        traffic_settings_action = settings_menu.addAction("")
+        self._i18n_actions.append((traffic_settings_action, "menu_traffic_settings"))
+        traffic_settings_action.triggered.connect(self._open_traffic_settings)
 
         self._dashboard_settings_action = settings_menu.addAction("")
         self._i18n_actions.append((self._dashboard_settings_action, "menu_dashboard_settings"))
@@ -1674,6 +1701,36 @@ class MainWindow(QMainWindow):
         save_gs_position(self._gs_position)
         self.statusBar().showMessage(i18n.tr("status_gs_position_saved"), 5000)
 
+    def _open_traffic_settings(self) -> None:
+        dialog = TrafficSettingsDialog(self._traffic_config, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._traffic_config = dialog.result_config()
+        save_traffic_config(self._traffic_config)
+        self._traffic_worker.update_config(self._traffic_config)
+        if not self._traffic_config["enabled"]:
+            self._map.render_traffic([])
+
+    def _compute_traffic_reference(self):
+        # Ground-station position (P2) if set, else the current flight's
+        # start reference, else the saved map-startup position - traffic is
+        # meant to be visible even before a flight/telemetry connection
+        # exists, so it deliberately does NOT depend on live GPS fix state
+        # the way the geofence center does.
+        if self._gs_position is not None:
+            return (self._gs_position.lat, self._gs_position.lon)
+        home = self._dashboard.home_position()
+        if home is not None:
+            return home
+        return load_home_position()
+
+    def _on_traffic_updated(self, aircraft) -> None:
+        self._map.render_traffic(aircraft)
+
+    def _on_traffic_error(self, message: str) -> None:
+        if message:
+            self.statusBar().showMessage(message, 5000)
+
     def _open_grid_pattern(self) -> None:
         live_position = None
         if self._last_telemetry_state is not None and self._last_telemetry_state.has_gps_fix():
@@ -2008,6 +2065,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message, 5000)
 
     def _check_heartbeat(self) -> None:
+        # Refreshed every tick regardless of connection state (unlike the
+        # early-return below) - live traffic is meant to work before a
+        # flight/telemetry connection even exists, see
+        # _compute_traffic_reference()'s docstring.
+        self._traffic_reference = self._compute_traffic_reference()
+
         now = time.time()
         if self._last_telemetry_time == 0:
             return
@@ -2464,6 +2527,7 @@ class MainWindow(QMainWindow):
             "nfz_proximity": self._nfz_proximity_action.isChecked(),
             "geofence_visible": self._geofence_visible_action.isChecked(),
             "geofence_enabled": self._geofence_enabled_action.isChecked(),
+            "traffic_visible": self._traffic_visible_action.isChecked(),
             "energy_reserve_yellow_pct": self._energy_yellow_pct,
             "energy_reserve_green_pct": self._energy_green_pct,
             "base_layer": self._selected_base_layer,
@@ -2528,6 +2592,7 @@ class MainWindow(QMainWindow):
         self._flight_logger.stop()
         self._tts_worker.stop()
         self._tracker_output_sender.stop()
+        self._traffic_worker.stop()
         # Overlay sizes only change via continuous mouse-drag ticks, so
         # rather than persisting on every pixel of movement, capture their
         # final size here alongside everything else.
