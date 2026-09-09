@@ -97,7 +97,7 @@ TOC_ENTRIES = [
     "4. Verbindung zur Telemetrie herstellen (inkl. Antennen-Tracker-Ausgabe, Modell-Profile)",
     "5. Offline-Nutzung (Longrange ohne Internet)",
     "6. Die Benutzeroberfläche",
-    "7. Kartenoptionen (Vektorkarte als Standard, Satellitenbild/OpenStreetMap, Sperrzonen inkl. OpenAIP und Austro Control, Rechtsklick-Menü, Home-Position)",
+    "7. Kartenoptionen (Vektorkarte als Standard, Satellitenbild/OpenStreetMap, Sperrzonen inkl. OpenAIP und Austro Control, Rechtsklick-Menü, Home-Position, Flugverkehr/ADS-B nur online)",
     "8. Route/Wegpunkte planen, Höhenprofil, Grid-Muster, INAV-Mission-Export",
     "9. Flugpfad-Aufzeichnung (Start/Pause/Export)",
     "10. Fluglog (CSV-Aufzeichnung)",
@@ -619,6 +619,43 @@ def build_story():
         "gedrosselte Positionsaktualisierung. Einstellbar über Anzeige & Karte -&gt; "
         "Karten-Performance..."
     ))
+    story.append(P("7.7 Flugverkehr (ADS-B) - nur online", "h2"))
+    story.append(P(
+        "Einstellungen -&gt; Flugverkehr-Einstellungen... aktiviert eine optionale Anzeige "
+        "bemannten Flugverkehrs (ADS-B) in der Nähe der Boden-/Flugposition, abgerufen von "
+        "airplanes.live (Standard, ohne API-Key) oder wahlweise OpenSky Network. Anders als die "
+        "Sperrzonen-Anzeige (Abschnitt 7.2) ist dies eine reine Online-Funktion: ohne "
+        "Internetverbindung bleiben einfach keine Kontakte sichtbar, es wird nie ein veralteter "
+        "Stand weiter angezeigt, da Flugverkehr-Positionen innerhalb von Sekunden veralten "
+        "würden. Der Dialog erlaubt außerdem Radius, Abrufintervall und die Basis-URL (falls ein "
+        "anderer Endpunkt/Proxy genutzt werden soll) einzustellen."
+    ))
+    story.append(P(
+        "Maximalhöhe blendet Kontakte oberhalb einer einstellbaren Schwelle aus - ohne diesen "
+        "Filter wäre die Anzeige durch Linienverkehr im Reiseflug (mehrere Kilometer Höhe) "
+        "praktisch nutzlos für den eigenen Flugbetrieb. Der Höhenbezug ist standardmäßig "
+        "<b>Höhe über Grund (AGL)</b>, umschaltbar auf Höhe über Meer (MSL): AGL vergleicht die "
+        "gemeldete Flughöhe gegen eine einzelne Bodenreferenzhöhe an der Boden-/Flugposition "
+        "(dieselbe Geländehöhen-Abfrage wie beim Höhenprofil, Abschnitt 8), nicht gegen das "
+        "Gelände unter jedem einzelnen Kontakt - für den Zweck \"keinen Linienverkehr sehen\" "
+        "ausreichend genau, ohne für jeden Kontakt einzeln eine Geländehöhe abzufragen. Ist beim "
+        "Wechsel auf AGL gerade keine Geländehöhe verfügbar (z. B. kurzzeitig offline), wird für "
+        "diesen einen Abruf automatisch auf einen MSL-Vergleich zurückgefallen - kenntlich an "
+        "einer kurzen Statuszeilen-Meldung -, statt Kontakte fälschlich auszublenden."
+    ))
+    story.append(P(
+        "Anzeige & Karte -&gt; Flugverkehr anzeigen blendet die Kontakte ein/aus, unabhängig "
+        "davon, ob der Abruf selbst aktiviert ist (analog zum Geofence-Muster in Abschnitt 7.2: "
+        "Sichtbarkeit und Aktivierung sind zwei getrennte Schalter). Jeder Kontakt erscheint als "
+        "kleines, nach Peilung gedrehtes Flugzeug-Symbol; ein Mauszeiger darüber zeigt Rufzeichen "
+        "und Höhe."
+    ))
+    story.append(P(
+        "<b>Wichtig:</b> Diese Anzeige ist eine Zusatzinformation, kein Ersatz für offizielle "
+        "Luftraumbeobachtung, Sichtflugregeln oder ein zugelassenes Kollisionswarnsystem - nicht "
+        "jedes Luftfahrzeug sendet ADS-B (z. B. viele Segelflieger, Ballone, Militär), und ein "
+        "fehlender Kontakt bedeutet nicht \"kein Verkehr vorhanden\"."
+    ))
 
     # --- 8. Route/Wegpunkte ---
     story.append(P("8. Route/Wegpunkte planen, importieren und als INAV-Mission exportieren", "h1"))
@@ -734,6 +771,8 @@ def build_story():
         "Sperrzonen (Untermenü): Sperrzonen laden... / Sperrzonen anzeigen, Distanz-Warnung "
         "aktivieren (50m), OpenAIP-Einstellungen... / OpenAIP Zonen laden, "
         "Österreich-Flugbeschränkungszonen laden (Austro Control) - siehe Abschnitt 7.2.",
+        "Flugverkehr anzeigen - blendet ADS-B-Kontakte ein/aus (Aktivierung/Konfiguration unter "
+        "Einstellungen -&gt; Flugverkehr-Einstellungen...) - siehe Abschnitt 7.7.",
         "Auto-Center, Drohnenrichtung/Norden oben, Aktuelle Position anspringen (Strg+Pos1).",
         "Wegpunkt-Editor anzeigen, Karten-Performance..., Tracking-Overlay anzeigen, "
         "Höhenverlauf anzeigen, Koordinaten anzeigen, RSSI/LQ Heatmap aktivieren.",
@@ -765,6 +804,8 @@ def build_story():
     story.extend(bullets([
         "Home-Position... - siehe Abschnitt 7.5.",
         "Bodenstations-Position... - siehe Abschnitt 7.5.",
+        "Flugverkehr-Einstellungen... - Anbieter, Radius, Abrufintervall, Höhenbezug "
+        "(AGL/MSL) und Maximalhöhe - siehe Abschnitt 7.7.",
         "Dashboard anpassen... - siehe Abschnitt 6.2.",
         "Sprache -&gt; Deutsch/English, wechselt die komplette Oberfläche sofort ohne Neustart.",
     ]))
