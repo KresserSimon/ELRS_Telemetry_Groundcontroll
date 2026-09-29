@@ -980,6 +980,15 @@ def build_story():
         "zusätzlich ein Konsolenfenster im Hintergrund."
     ))
     story.append(P(
+        "Stürzt die App durch einen unerwarteten Programmfehler ab, schließt sich dieses "
+        "Konsolenfenster im selben Moment mit - die dort zuletzt ausgegebene Fehlermeldung wäre "
+        "damit verloren. Deshalb schreibt die App jeden unbehandelten Programmfehler zusätzlich "
+        "dauerhaft in eine Protokolldatei unter %USERPROFILE%\\.elrs_ground_station\\crash_log.txt "
+        "(die letzten 20 Abstürze, ältere werden automatisch verworfen) - sowohl beim Start aus "
+        "der Exe als auch aus dem Quellcode. Bei einem Absturz lohnt sich also ein Blick in diese "
+        "Datei, bevor Hilfe gesucht wird."
+    ))
+    story.append(P(
         "Die Vektorkarte (siehe Abschnitt 7.1) funktioniert auch in der Exe, benötigt dort aber - "
         "genau wie beim Start aus dem Quellcode - eine heruntergeladene Regions-Datei (Anzeige & "
         "Karte -&gt; Kartentyp -&gt; Vektorkarten-Region herunterladen...); die Regions-Dateien "

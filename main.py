@@ -121,6 +121,13 @@ def _print_serial_ports(lang: str) -> None:
 
 
 def main() -> int:
+    # First thing, before anything else can throw - see core/crash_log.py
+    # for why this matters even though PyQt6 already prints a traceback to
+    # stderr on its own: the packaged .exe's console window disappears the
+    # instant the process aborts, taking that output with it.
+    from core.crash_log import install_crash_logger
+    install_crash_logger()
+
     args = parse_args()
 
     if args.list_ports:
